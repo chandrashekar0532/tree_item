@@ -1,0 +1,404 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+## Renders self's styled_string on self's canvas; and this
+## styled_string will be fetched from the headings_holder.
+## In addition, by default, :allow_multi_line? will be set to
+## _true, so column headings can have multiple lines by default.
+##
+## See also the super class styled_string_renderer.
+##
+## Supports the following properties:
+##  * allow_column_heading_dragging?: if _true (default) then
+##    the end-user can draw column (headings) around to change
+##    the order in which they appear.
+def_slotted_exemplar(:styled_heading_renderer,
+{
+	{:allow_column_heading_dragging?, _true}
+},
+:styled_string_renderer)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## if _true (default) then the end-user can draw column
+## (headings) around to change the order in which they appear.
+styled_heading_renderer.define_slot_access(:allow_column_heading_dragging?, :writable)
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+styled_heading_renderer.define_shared_constant(:resize_width, 5, :private)
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+## Default value for allow_multi_line?
+styled_heading_renderer.define_shared_constant(:default_allow_multi_line?,
+					       _true, :private)
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_private _method styled_heading_renderer.init(p_properties)
+	## Parameters    : P_PROPERTIES: See new method, the following
+	##                    have been added in this subclass:
+	##                  * allow_column_heading_dragging?: if _true
+	##                    (defaults to _false) then lines connecting
+	##                     trees to their parent will be rendered.
+	## Returns       : An initialised _self
+	## Function      : 
+	_super.init(p_properties)
+	.allow_column_heading_dragging? << p_properties[:allow_column_heading_dragging?].default(_true)
+	# for the heading renderer, self's property :v_alignment is
+	# called :column_heading_v_alignment
+	.v_alignment << p_properties[:column_heading_v_alignment].default(:middle)
+	>> _self 
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_heading_renderer.headings_holder << p_headings_holder
+	## Parameters    : P_HEADINGS_HOLDER: contains information
+	##                    about headings (rows and column), their
+	##                    alignments, dimensions, etc. 
+	## Returns       : P_HEADINGS_HOLDER
+	## Function      : Specify P_HEADINGS_HOLDER to be used, and
+	##                 set self's styled_string to be P_HEADINGS_HOLDER's one;
+	##                 and self's height will be set to
+	##                 P_HEADINGS_HOLDER height.
+	.headings_holder << p_headings_holder
+	_if (p_headings_holder _isnt _unset)
+	_then
+		.styled_string << p_headings_holder.styled_string
+		_self.row_height << p_headings_holder.height
+	_endif
+	>> p_headings_holder
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_heading_renderer.render(p_x, p_y, p_xmax, p_ymax, p_index)
+	## Parameters    : P_X: The x-coordinate *from which* we need
+	##                    to start rendering. Only columns whose
+	##                    right offset is larger than P_X will be rendered.
+	##                    the row_heading, nothing is rendered.
+	##                 P_Y: The y-coordinate *at which* the row
+	##                    heading needs to be rendered.
+	##                 P_XMAX: Maximal horizontal value to be used
+	##                 P_YMAX: Maximal vertical value to be used
+	##                 P_INDEX: The index we are in the list of all
+	##                    things rendered, this will be used as a default text.
+	## Returns       : 
+	## Function      : Renders the self's value at (0, P_Y)
+	_local l_canvas << _self.canvas, l_row_height << _self.row_height, l_headings_holder << _self.headings_holder
+	_if _not l_headings_holder.column_headings? _then _return _endif
+	# it is strange, but clipbounds are set to doc_width and that  leaves part of the screen as rubbish
+	# this comes from restoring the clipbounds as done in render_button
+	_local l_clipbounds << _self.clip_bounds ^<< _unset 
+	_local l_resize_cursor << _self.style_holder.resize_column_cursor
+	_local l_rsw << _self.resize_width, l_rswd << l_rsw * 2 + 1
+	_for i_heading, i_index _over l_headings_holder.fast_headings_and_indices()
+	_loop
+		(l_xmin, l_xmax, l_visible?, l_align, l_selectable?) << l_headings_holder.tab_info(i_index)
+		l_width << l_xmax - l_xmin
+		_self.render_panel(l_xmin, p_y, l_width, l_row_height, 1)
+		# add hotspot for heading resizing
+		l_canvas.add_hotspots(hotspot.new_rectangle_with_size(l_resize_cursor, l_xmax - l_rsw, p_y, l_rswd, l_row_height))
+	_finally
+		# draw something for the remaining space
+		l_xmin << l_xmax
+		l_xmax << l_canvas.width + l_canvas.horizontal_position
+		l_width << l_xmax - l_xmin
+		_self.render_panel(l_xmin, p_y, l_width, l_row_height, 1)
+	_endloop
+	_self.clip_bounds << l_clipbounds
+	_if (.value_holder _is _unset)
+	_then
+		.styled_string << l_headings_holder.styled_string
+	_endif
+	>> _super.render(p_x, p_y, p_xmax, p_ymax, p_index)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={subclassable})
+_method styled_heading_renderer.render_row_heading(p_x, p_y, p_index)
+	## Parameters    : P_X: The x-coordinate *from which* we need
+	##                    to start rendering. If P_X > the width of
+	##                    the row_heading, nothing is rendered.
+	##                 P_Y: The y-coordinate *at which* the row
+	##                    heading needs to be rendered.
+	##                 P_INDEX: The index we are in the list of all
+	##                    things rendered, this will be used as a default text.
+	## Returns       : _true if something got rendered, _false otherwise.
+	## Function      : Renders the row-heading at (0, P_Y)
+	_if _not _super.render_row_heading(p_x, p_y, p_index) _then _return _false _endif 
+	_local l_x << _self.headings_holder.row_headings_width
+	_local l_resize_cursor << _self.style_holder.resize_column_cursor
+	_local l_rsw << _self.resize_width, l_rswd << l_rsw * 2 + 1
+	_self.canvas.add_hotspots(hotspot.new_rectangle_with_size(l_resize_cursor, l_x - l_rsw, p_y, l_rswd, _self.row_height))
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method styled_heading_renderer.handle_click(p_x, p_y, p_event, p_agent)
+	## Parameters    : P_X, P_Y: position where user clicked
+	##                 P_EVENT: An input event that needs handling.
+	##                 P_AGENT: The agent of the window in which we draw.
+	## Returns       : _true if the event has been handled, _false otherwise
+	## Function      : Check if P_EVENT is a press (or
+	##                 double_press), if so, check if the user starts dragging the
+	##                 size of the column, or just presses down the column.
+	_if (_not _self.headings_holder.column_headings?) _orif
+	    (((l_func << p_event.func) _isnt :press) _andif (l_func _isnt :double_press)) _orif 
+	    ((l_column_index << _self.column_at(p_x - (l_rsw << _self.resize_width))) _is _unset)
+	_then
+		_return _false 
+	_endif
+	# column is known
+	_local (l_xmin, l_xmax, l_visible?, l_align, l_selectable?) << _self.headings_holder.tab_info(l_column_index)
+	# check if user pressed down at resize area
+	_if (l_column_index >= 0) _andif (((p_x + l_rsw) >= l_xmax) _orif ((p_x - l_rsw) <= l_xmin))
+	_then
+		_self.int!start_resize_column(p_event, p_agent, l_column_index)
+	_else 
+		_self.int!handle_button_down(p_event, p_agent, l_column_index)
+	_endif
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method styled_heading_renderer.int!handle_button_down(p_event, p_agent, p_column_index)
+	## Parameters    : P_EVENT: Event that has been raised
+	##                 P_AGENT: The tree_agent that by defaults
+	##                    handles events for self's window / tree_item.
+	##                 P_COLUMN_INDEX: Integer denoting n-th column.
+	## Returns       : -
+	## Function      : Set the int!override handler that we are
+	##                 processing a button click (down has
+	##                 occurred, we're waiting for up)
+	_local l_canvas << _self.canvas, l_row_height << _self.row_height, l_headings_holder << _self.headings_holder
+	_local l_y << l_canvas.vertical_position
+	_local (l_xmin, l_xmax, l_visible?, l_align, l_selectable?) << l_headings_holder.tab_info(p_column_index)
+	_local l_width << l_xmax - l_xmin
+	_local l_heading << l_headings_holder.column_heading(p_column_index)
+	p_agent.int!override_data << {l_xmin, l_y, l_width, l_row_height, l_heading, l_align, p_column_index}
+	p_agent.int!override_handler << handler.new(_self, :|int!handle_button_up()|)
+	# draw button down
+	_local l_clipbounds << _self.clip_bounds ^<< _unset
+	# show button as pressed
+	_self.render_panel(l_xmin, l_y, l_width, l_row_height, 0, _true)
+	_self.clip_bounds << l_clipbounds
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method styled_heading_renderer.int!handle_button_up(p_event, p_agent)
+	## Parameters    : P_EVENT: Event that has been raised
+	##                 P_AGENT: The tree_agent that by defaults
+	##                    handles events for self's window / tree_item.
+	## Returns       :  _true if P_EVENT has been handled, _false otherwise 
+	## Function      : Check if we are dragging / resizing columns,
+	##                 set the mouse accordingly, draw resizer lines, checking if
+	##                 the user cancelled by pressing 'escape', and carry out the
+	##                 appropraite actions (reordering columns) or return the
+	##                 appropriate action :column_click
+	_if ((l_category << p_event.category) _is :locator) _andif (p_event.id _is :drag)
+	_then
+		# check if dragging is allowed
+		_if (_not .allow_column_heading_dragging?) _then _return _true _endif 
+		# check if we're still in the same column
+		(l_x, l_y, l_width, l_height, l_heading, l_align, l_old_column_index) << (_scatter p_agent.int!override_data)
+		_if ((l_new_column_index << _self.column_at(p_event.x)) _isnt _unset) _andif
+		    (l_new_column_index <> l_old_column_index) _andif
+		    (l_new_column_index > 0) _andif
+		    (l_y _isnt _unset) _andif p_event.y.in_range?(l_y, l_y + l_height)
+		_then
+			_self.canvas.cursor << mouse_cursor.standard_cursor(:drag_button)
+		_else
+			_self.canvas.cursor << mouse_cursor.standard_cursor(:default)
+		_endif
+		# this one's been handled
+		_return _true 
+	_elif (((l_func << p_event.func) _is :press) _orif (l_func _is :double_press)) _orif
+	    ((p_event.category _is :keyboard) _andif (p_event.id = character.escape))
+	_then
+		l_cancelled? << _true 
+	_elif (l_func _is :release) _orif (l_func _is :double_release)
+	_then
+		# this is the up event we have been waiting for
+		(l_x, l_y, l_width, l_height, l_heading, l_align, l_old_column_index) << (_scatter p_agent.int!override_data)
+		l_cancelled? << (l_y _is _unset) _orif _not p_event.y.in_range?(l_y, l_y + l_height)
+	_else
+		# process super
+		_return _false 
+	_endif
+	# reset action
+	p_agent.int!override_data << p_agent.int!override_handler << _unset
+	_local l_canvas << _self.canvas
+	l_canvas.cursor << mouse_cursor.standard_cursor(:default)
+	_if (l_old_column_index _is _unset) _then _return _false _endif
+	# draw button up
+	_local l_clipbounds << _self.clip_bounds ^<< _unset
+	# when we have styled_string for this button, the following won't work
+	_self.render_panel(l_x, l_y, l_width, l_height, 1, _true)
+	_self.clip_bounds << l_clipbounds
+	# now check if we should do something
+	_if l_cancelled?
+	_then
+		# do nothing, but we've handled it
+		_return _true
+	_elif ((l_new_column_index << _self.column_at(p_event.x)) = l_old_column_index)
+	_then 
+		_return (_false, :column_click, p_event, l_new_column_index)
+	_elif (l_new_column_index _isnt _unset) _andif (l_new_column_index > 0)
+	_then
+		# move the old column to the new position
+		_if .allow_column_heading_dragging?
+		_then
+			_local l_new_position << _self.headings_holder.position_of(l_new_column_index)
+			_self.headings_holder.change_column_order(l_old_column_index, l_new_position)
+		_endif 
+		_return _true 
+	_endif
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method styled_heading_renderer.int!start_resize_column(p_event, p_agent, p_column_index)
+	## Parameters    : P_EVENT: An input_event that is being
+	##                    handled, this will be a mouse down that
+	##                    is close to the end of a column
+	##                 P_AGENT: The agent that is handling it
+	##                 P_COLUMN_INDEX: The column that is being resized
+	## Returns       : 
+	## Function      : Starts the resizing by setting an override
+	##                 handler for the resize-action, and by drawing the initial /
+	##                 current place where the column is / will go.
+	_local l_canvas << _self.canvas, l_headings_holder << _self.headings_holder
+	_local l_ymin << l_canvas.vertical_position, l_ymax << l_ymin + l_canvas.height
+	_local (l_xsta, l_xcur, l_visible?, l_align, l_selectable?) << l_headings_holder.tab_info(p_column_index)
+	# let's take the previous' column last value as start, so we use the grid lines
+	l_xsta -<< 1
+	# the minimum column width
+	_local l_xmin << l_xsta + _if (p_column_index = 0)
+				  _then >> 0
+				  _else >> l_headings_holder.column_min_widths[p_column_index] 
+				  _endif
+	_local l_line_style << _self.style_holder.resize_line_style
+	p_agent.int!override_data << {l_xsta, l_xmin, l_xcur, l_ymin, l_ymax, l_line_style, p_column_index, (p_event.func _is :double_press)}
+	p_agent.int!override_handler << handler.new(_self, :|int!handle_resizing_column()|)
+	l_canvas.cursor << _self.style_holder.resize_column_cursor
+	# draw resizers
+	l_canvas.xor_segment(l_line_style, l_xsta, l_ymin, l_xsta, l_ymax)
+	l_canvas.xor_segment(l_line_style, l_xcur, l_ymin, l_xcur, l_ymax)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method styled_heading_renderer.int!handle_resizing_column(p_event, p_agent)
+	## Parameters    : P_EVENT: An input_event that is being
+	##                    handled, this will be a mouse drag or a
+	##                    mouse up that ends the dragging (or a escape key)
+	##                 P_AGENT: The agent that is handling it
+	## Returns       : 
+	## Function      : Checks if the resizing continuous or ends;
+	##                 in the latter case it can mean the column resizes or - with
+	##                 a double click - the column's width should be optimised.
+	##                 When escape is pressed the resizing is ended.
+	##                 When the dragging is continued, the resizer
+	##                 bar will be drawn / undrawn on the new, validated position.
+	_if ((l_category << p_event.category) _is :locator) _andif (p_event.id _is :drag)
+	_then
+		# show new resizer
+		_local l_data << p_agent.int!override_data
+		_local (l_xsta, l_xmin, l_xcur, l_ymin, l_ymax, l_line_style, l_column_index) << (_scatter l_data)
+		# check range
+		_local l_xnew << p_event.x.max(l_xmin)
+		# store new value, and we have done something now
+		l_data[3] << l_xnew
+		l_data[8] << _true 
+		_local l_canvas << _self.canvas
+		# undraw old
+		l_canvas.xor_segment(l_line_style, l_xcur, l_ymin, l_xcur, l_ymax)
+		# draw new
+		l_canvas.xor_segment(l_line_style, l_xnew, l_ymin, l_xnew, l_ymax)
+		# we've handled this
+		_return _true 
+	_elif (l_category _is :button) _andif
+	      (((l_func << p_event.func) _is :release) _orif (l_func _is :double_release)) _orif
+	      (l_cancel? << ((p_event.category _is :keyboard) _andif (p_event.id = character.escape)))
+	_then
+		_local (l_xsta, l_xmin, l_xcur, l_ymin, l_ymax, l_line_style, l_column_index, l_done?) << (_scatter p_agent.int!override_data)
+		# undraw resizers
+		_local l_canvas << _self.canvas
+		l_canvas.xor_segment(l_line_style, l_xsta, l_ymin, l_xsta, l_ymax)
+		l_canvas.xor_segment(l_line_style, l_xcur, l_ymin, l_xcur, l_ymax)
+		# reset action
+		p_agent.int!override_data << p_agent.int!override_handler << _unset
+		l_canvas.cursor << mouse_cursor.standard_cursor(:default)
+		# notify
+		_if (l_cancel? _is _true) _orif (_not l_done?)
+		_then
+			_return _true
+		_else 
+			_return (_false, :column_resize, p_event, l_column_index, l_xcur - l_xsta)
+		_endif
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={subclassable})
+_method styled_heading_renderer.new_from(p_another, _optional p_extra_props)
+	## Parameters    : P_ANOTHER: Another styled_string_renderer or subclass.
+	##                 [P_EXTRA_PROPS]: Property list containing
+	##                    properties that are possibly relevant to
+	##                    self, but will only be used if P_ANOTHER
+	##                    cannot provide them.
+	## Returns       : New initialised instance of _self.
+	## Function      : Copies the following properties from P_ANOTHER:
+	##                  * :canvas
+	##                  * :styled_string
+	##                  * :style_holder
+	##                  * :value_holder
+	##                  * :headings_holder
+	##                  * :allow_column_heading_dragging?
+	##
+	_local l_allow_col_drag? <<
+		_if p_another.responds_to?(:allow_column_heading_dragging?)
+		_then >> p_another.allow_column_heading_dragging?
+		_elif (p_extra_props _isnt _unset)
+		_then >> p_extra_props[:allow_column_heading_dragging?]
+		_endif
+	_local l_props << property_list.new_with(
+				  :canvas, p_another.canvas,
+				  :styled_string, p_another.styled_string,
+				  :style_holder, p_another.style_holder,
+				  :value_holder, p_another.value_holder,
+				  :headings_holder, p_another.headings_holder,
+				  :allow_column_heading_dragging?, l_allow_col_drag?)
+	>> _clone.init(l_props)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method styled_heading_renderer.exported_properties
+	## List of property (names) that can be set by the api-user
+	# Note: I have considered to allow disabling column resizing as
+	# well, by introducing a new property.
+	# I did not do this, since an end-user might expect that if
+	# there are columns, they can be resized. May be the font or
+	# dialog size is wrong, and (s)he should be able to correct the
+	# column width, if desired. 
+	# That is why I have not introduced this property.
+	_local l_set << _super.exported_properties.copy()
+	l_set.add_all({:allow_column_heading_dragging?})
+	>> l_set
+_endmethod
+$
+

@@ -1,0 +1,2194 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Contains all styles to be used for rendering styled_strings, and
+## some more for rendering display_trees (which are
+## styled_string containers).
+##
+## The following properties can only be specified during creation:
+##   :style_holder       Parent style holder, used for item
+##                       self's does not know.
+## The following properties are supported:
+##   :module_name        Used for retrieving bitmap resources, (see slot accessor)
+##   :display_style:     May have three values: :normal (default), :tabular, :document
+##                       :tabular: data is specified in columns. Column headings are
+##                         specified. Tabs in styled_string will tab to the next
+##                         column. Selections highlight the entire cell/row. 
+##                       :normal: data is displayed without columns, tree like or
+##                         list like. Tabs will tab to the next column, which might not
+##                         exist (in case it is not displayed either). Selections
+##                         highlight the text selected. 
+##                       :document (not supported now, may be in future release): as :normal, but :tabs will indent.
+##   :text_styles        List with <name>-<text_style> pairs, that
+##                       will be passed scatterd to .add_text_style()
+##                       (Alternatively, this can be lists of
+##                       {<name>, <colour>(_name),
+##                       [<underline?>], [font], [hypertext?], [<strike_through?>]},
+##                       that will be passed to .add_text_style() as well).
+##                       Here <name> is the name to be used for
+##                       the text style in the styled string; the <colour> is a
+##                       colour or the name of a colour (see colour.called()),
+##                       <hypertext> means hypertext notifiers will be generated when
+##                       the end-user click on the text. (Defaults to <underline>).
+##   :class_formatters   List with {<name>, <formatter>}, where <name> is a class_name,
+##                       causing the formatter to be applied when the a value following
+##                       :value in the styled_string is retrieved, and the
+##                       retrieved value is of the right class <name>.
+##                       <formatter> is a (sub)class of string_format, or a procedure
+##                       or a handler, returning a string;
+##   :value_formatters   List with {<name>, <formatter>, [<unit_display_group>]}
+##                       where <name> is a value_id, causing the formatter to be applied when
+##                       the a value following :value in the styled_string is retrieved.
+##                       <formatter> is a (sub)class of string_format, or a procedure
+##                       or a handler, returning a string;
+##                       <unit_display_group> is optional and used to retrieve 
+##                       .sorted_unit_formats_and_strings() to
+##                       get alternatives the end-user can select with a right-mouse
+##                       click in the column headings.
+##                       For <unit_display_group> to work, make sure <name>
+##                       corresponds to the column_heading_id.
+##   :image_schemes      List with {<scheme_name>, {<image_state_name>, <image>}},
+##                       as might be passed to .add_image_scheme()
+##   :value_schemes      List with {<scheme_name>, {<value>, <image>}},
+##                       as might be passed to .add_value_scheme()
+##   :toggle_schemes     List with {<scheme_name>, {<value_from>, <value_to>}},
+##                       as might be passed to .add_toggle_scheme()
+##   :selected_colour:   Highlight colour used for selection, defaults to colour.called(:highlight)
+##   :no_focus_colour:    Colour used for selection, when the selection is depicted as 
+##                       having no-focus, defaults to colour.called(:button_face)
+##   :stripe_colour:     Background colour used for stripes, defaults to colour.called(:stripes)
+def_slotted_exemplar(:string_styles_holder,
+{
+	{:parent,                     _unset},
+	{:module_name,                _unset},
+	{:row_height_cache,           _unset}, # ToDo
+	{:text_style_table,           hash_table.new()},   # style name -> text style
+	{:highlight_text_style_table, hash_table.new()},   # style name -> highlight text style
+	{:hyper_text_styles,          set.new()},
+	{:hyper_text_style_names,     set.new()}, # Unused, remove this after merging the patch
+	{:selected_colour,            _unset}, 
+	{:selected_row_style_cache,   property_list.new()},
+	{:no_focus_colour,            _unset}, 
+	{:no_focus_row_style_cache,   property_list.new()},
+	{:stripe_colour,              _unset}, 
+	{:stripe_style_cache,         property_list.new()},
+	{:image_scheme_table,         hash_table.new()},
+	{:formatter_table,            property_list.new()},
+	{:class_formatter_table,      property_list.new()},
+	{:udp_table,                  property_list.new()}, # unit display group (of formatters)
+	{:value_scheme_table,         property_list.new()},
+	{:toggle_scheme_table,        property_list.new()},
+	{:display_style,              :normal} # :normal, :tabular, :document
+})
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Colour used for highlighting a selection; preferably this is
+## not changed so the same colour is used system wide.
+## Defaults to :hightlight colour from the system table.
+string_styles_holder.define_slot_access(:selected_colour, :readable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Colour used for drawing stripes (for alternating rows); preferably this is
+## not changed so the same colour is used system wide; defaults
+## to colour.called(:stripes). 
+string_styles_holder.define_slot_access(:stripe_colour, :readable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Name of the module that will be used when retrieving
+## resources, at this moment: images. On a per image basis this
+## can be overruled by specifying {<image_name>, <module_name>}
+## rather than only <image_name> (in the latter case the
+## module_name is used as it is set by this method)
+string_styles_holder.define_slot_access(:module_name, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Three values are allowed:
+## :normal:    Tabs move to the next cell; selection is drawn
+##             as in a text-editor.
+## :tabular    see: .tabular_style?
+## :document   see: .document_style?
+string_styles_holder.define_slot_access(:display_style, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Colour used for highlighting a selection; preferably this is
+## not changed so the same colour is used system wide.
+## Defaults to :button_face colour from the system table.
+string_styles_holder.define_slot_access(:no_focus_colour, :readable)
+$
+
+# ----------
+# ToDo: We want to have images read as resources from a module
+# ----------
+
+_pragma(classify_level=restricted, topic={tree_item})
+## Message accessor used for retrieving very general control
+## related messages; the gen_graphics groups is used
+string_styles_holder.define_shared_constant(:message_accessor, message_handler.new(:gen_graphics), :private)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## height margin used vertically inside cells
+string_styles_holder.define_shared_constant(:cell_spacing_h, 2, :public)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## width margin used horizontally inside cells
+string_styles_holder.define_shared_constant(:cell_spacing_w, 4, :public)
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+## The width/height of the expand/collapse area reversed for
+## drawing the 'button' used by end-user the expand or collapse trees
+string_styles_holder.define_shared_constant(:box_spacing, 16, :public)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## mouse cursor used when resizing a column (change width)
+string_styles_holder.define_shared_constant(:resize_column_cursor,
+	mouse_cursor_ref.new(:point_we),
+	:public)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## mouse cursor used when resizing a row (change height)
+string_styles_holder.define_shared_constant(:resize_row_cursor,
+	mouse_cursor_ref.new(:point_ns),
+	:public)
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+## Cache for storing the ellipses_message since this is needed
+## *very* often.
+string_styles_holder.define_shared_variable(:int!ellipses_message,
+	_unset,
+	:private)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## List of properties that can be get/set on self;
+## :style_holder can only be set at creation time.
+string_styles_holder.define_shared_constant(:exported_properties,
+	set.new_with(
+		:module_name, 
+		:display_style,
+		:text_styles,
+		:value_formatters,
+		:class_formatters,
+		:image_schemes,
+		:value_schemes,
+		:toggle_schemes,
+		:selected_colour,
+		:no_focus_colour,
+		:stripe_colour,
+		:row_height),
+	:public)
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+## True if canvasses support rendering of rasters (from version 3.21 and onward)
+string_styles_holder.define_shared_constant(:int!allow_rasters?, canvas.responds_to?(:|render_raster()|), :private)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## minimum width for a cell / column
+string_styles_holder.define_shared_constant(:min_cell_w, 12, :public)
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={external})
+## fill_style for filling surrogate buttons drawn by a renderer
+## on a canvas (tree_item)
+string_styles_holder.define_shared_constant(:highlight_fill_style,
+	fill_style.new(colour.called(:highlight_text)),
+	:public)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## width margin used horizontally inside cells
+string_styles_holder.define_shared_constant(:selection_spacing_w, 2, :public)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Line style used for connecting trees (the expand/collapse
+## buttons in front of them) to denote parent / child / sibling relationship
+string_styles_holder.define_shared_variable(:connection_line_style,
+	line_style.new(colour.called(:button_shadow), 1, dash_pattern.new_with(1,1)),
+	:readonly)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Line in foreground colour, used for displaying things in
+## foreground colour (panels with bevel 0, expand / collapse
+## signs, etc.)
+string_styles_holder.define_shared_variable(:foreground_line_style,
+	line_style.new(colour.called(:foreground), 1),
+	:readonly)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## The line style used for resizer lines, when the end user
+## resizes e.g. columns or rows
+string_styles_holder.define_shared_variable(:resize_line_style,
+	line_style.new(colour.called(:foreground), 1, dash_pattern.new({4,2})),
+	:readonly)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Used for drawing grids (decoration) around cells
+string_styles_holder.define_shared_variable(:grid_line_style,
+	line_style.new(colour.called(:button_face), 1),
+	:readonly)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## a fill_style, for filling the background canvasses
+string_styles_holder.define_shared_variable(:background_fill_style,
+	fill_style.new(colour.called(:background)),
+	:readonly)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## fill_style for filling surrogate buttons drawn by a renderer
+## on a canvas (tree_item)
+string_styles_holder.define_shared_variable(:button_face_fill_style,
+	fill_style.new(colour.called(:button_face)),
+	:readonly)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## for drawing the shady side of a surrogate button
+string_styles_holder.define_shared_variable(:button_shadow_line_style,
+	line_style.new(colour.called(:button_shadow), 1),
+	:readonly)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## for drawing the sunny side of a surrogate button
+string_styles_holder.define_shared_variable(:button_highlight_line_style,
+	line_style.new(colour.called(:button_highlight), 1),
+	:readonly)
+$
+
+system.add_dependent(string_styles_holder, :image_restore)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## width margin used horizontally inside cells
+string_styles_holder.define_shared_constant(:min_cell_visibility_w, 12, :public)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## min height margin used vertically inside cells
+string_styles_holder.define_shared_constant(:min_cell_visibility_h, 12, :public)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method string_styles_holder.new_from(_optional p_parent, p_properties)
+	## Parameters    : [P_PARENT]: Parent style holder that will be
+	##                    used if self's does not know a style,
+	##                    scheme, etc. Defaults to the exemplar.
+	##                 [P_PROPERTIES]: Property list, see .new_with()|
+	## Returns       : A new instance of the class.
+	## Function      : 
+	_if (p_properties _is _unset)
+	_then
+		p_properties << property_list.new()
+	_endif
+	p_properties[:style_holder] << p_parent
+	>> _clone.init(p_properties)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method string_styles_holder.new_with(_gather p_properties)
+	## Parameters    : P_PROPERTIES: List of key-value pairs that
+	##                    will be applied to self as properties.
+	## Returns       : A new instance of the class.
+	## Function      : 
+	## 
+	## The following properties can only be specified during creation:
+	##   :style_holder       Parent style holder, used for item
+	##                       self's does not know.
+	## The following properties are supported:
+	##   :module_name        Used for retrieving bitmap resources, (see slot accessor)
+	##   :display_style:     May have three values: :normal (default), :tabular, :document
+	##                       :tabular: data is specified in columns. Column headings are
+	##                         specified. Tabs in styled_string will tab to the next
+	##                         column. Selections highlight the entire cell/row. 
+	##                       :normal: data is displayed without columns, tree like or
+	##                         list like. Tabs will tab to the next column, which might not
+	##                         exist (in case it is not displayed either). Selections
+	##                         highlight the text selected. 
+	##                       :document (not supported now, may be in future release): as :normal, but :tabs will indent.
+	##   :text_styles        List with <name>-<text_style> pairs, that
+	##                       will be passed scatterd to .add_text_style()
+	##                       (Alternatively, this can be lists of
+	##                       {<name>, <colour>(_name),
+	##                       [<underline?>], [font], [hypertext?], [<strike_through?>]},
+	##                       that will be passed to .add_text_style() as well).
+	##                       Here <name> is the name to be used for
+	##                       the text style in the styled string; the <colour> is a
+	##                       colour or the name of a colour (see colour.called()),
+	##                       <hypertext> means hypertext notifiers will be generated when
+	##                       the end-user click on the text. (Defaults to <underline>).
+	##   :class_formatters   List with {<name>, <formatter>}, where <name> is a class_name,
+	##                       causing the formatter to be applied when the a value following
+	##                       :value in the styled_string is retrieved, and the
+	##                       retrieved value is of the right class <name>.
+	##                       <formatter> is a (sub)class of string_format, or a procedure
+	##                       or a handler, returning a string;
+	##   :value_formatters   List with {<name>, <formatter>, [<unit_display_group>]}
+	##                       where <name> is a value_id, causing the formatter to be applied when
+	##                       the a value following :value in the styled_string is retrieved.
+	##                       <formatter> is a (sub)class of string_format, or a procedure
+	##                       or a handler, returning a string;
+	##                       <unit_display_group> is optional and used to retrieve 
+	##                       .sorted_unit_formats_and_strings() to
+	##                       get alternatives the end-user can select with a right-mouse
+	##                       click in the column headings.
+	##                       For <unit_display_group> to work, make sure <name>
+	##                       corresponds to the column_heading_id.
+	##   :image_schemes      List with {<scheme_name>, {<image_state_name>, <image>}},
+	##                       as might be passed to .add_image_scheme()
+	##                       Image scheme's are used to find an image for
+	##                       the image_state(s) of a display tree.
+	##   :value_schemes      List with {<scheme_name>, {<value>, <image>}},
+	##                       as might be passed to .add_value_scheme()
+	##                       Value scheme's are used to find an image for
+	##                       the value of a display tree, when it is
+	##                       referenced in a toggle or radio toggle.
+	##   :toggle_schemes     List with {<scheme_name>, {<value_from>, <value_to>}},
+	##                       as might be passed to .add_toggle_scheme()
+	##                       Toggle scheme's are used to determine a new
+	##                       value when a current value is 'toggled'
+	##                       (most likely by the end-user clicking on a toggle).
+	##                       For 'toggles' all sorts of values can be
+	##                       mapped-to, as long as they exist in the value-scheme.
+	##                       For 'radio-toggles' the <value_to>s must be
+	##                       booleans or at least implemnet the .not method,
+	##                       since <value_to>.not will be set to
+	##                       associated radio-toggles.
+	##   :selected_colour:   Highlight colour used for selection, defaults to colour.called(:highlight)
+	##   :no_focus_colour:    Colour used for selection, when the selection is depicted as 
+	##                       having no-focus, defaults to colour.called(:button_face)
+	##   :stripe_colour:     Background colour used for stripes, defaults to colour.called(:stripes)
+	>> _clone.init(property_list.new_with(_scatter p_properties))
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method string_styles_holder.init(p_properties)
+	## Parameters    : P_PROPERTIES: A property_list, see self's
+	##                    class comments.
+	## Returns       : _self.
+	## Function      : Initialise self's slots; parent will be set
+	##                 to :style_holder, or the exemplar if unspecified.
+	.parent << _if ((l_parent << p_properties[:style_holder]) _isnt _unset)
+		   _then >> l_parent
+		   _else >> _self.exemplar
+		   _endif
+	# for the moment, share the following with parent
+	#	.module_name << _unset 
+	#	.display_style << :normal
+	#	.selected_row_style_cache << property_list.new()
+	#	.stripe_style_cache << property_list.new()
+	# the following are not shared, but looked up in parent when not found
+	.row_height_cache << _unset 
+	.text_style_table << hash_table.new()
+	.hyper_text_style_names << set.new()
+	.formatter_table << property_list.new()
+	.class_formatter_table << property_list.new()
+	.udp_table << property_list.new()
+	.image_scheme_table << hash_table.new()
+	.value_scheme_table << property_list.new()
+	.toggle_scheme_table << property_list.new()
+	_for i_exported_property _over _self.exported_properties.fast_elements()
+	_loop
+		_if ((l_property << p_properties[i_exported_property]) _isnt _unset)
+		_then
+			_self.perform(i_exported_property.with_chevron, l_property)
+		_endif
+	_endloop
+	>> _self
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method string_styles_holder.document_style?
+	## True if things need to be displayed as a document
+	## (multiple lines allowed, tabs are used for indentation
+	## rather than moving to a new column, expand buttons are in grey)
+	>> (.display_style _is :document)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method string_styles_holder.tabular_style?
+	## True if things need to be displayed as a table
+	## (selection needs to be cell/row based; text should
+	## clipped to cells)
+	>> (.display_style _is :tabular)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.text_styles << p_new
+	## Parameters    : P_NEW: List with <name>-<text_style> pairs, that
+	##                     will be passed scatterd to .add_text_style()
+	##                     (Alternatively, this can be lists of
+	##                     {<name>, <colour>(_name),
+	##                     [<underline?>], [font], [hypertext?], [<strike_through?>]},
+	##                     that will be passed to .add_text_style() as well).
+	##                     Here <name> is the name to be used for
+	##                     the text style in the styled string; the <colour> is a
+	##                     colour or the name of a colour (see colour.called()),
+	##                     <hypertext> means hypertext notifiers will be generated when
+	##                     the end-user click on the text. (Defaults to <underline>).
+	## Returns       : P_NEW
+	## Function      : Decache, loop over P_NEW and pass it to .add_text_style()
+	.text_style_table.empty()
+	.hyper_text_style_names.empty()
+	# check if the user defined some text styles
+	_for i_name_plus_text_style_pair _over p_new.fast_elements()
+	_loop
+		_self.add_text_style(_scatter i_name_plus_text_style_pair)
+	_endloop
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.value_formatters << p_new
+	## Parameters    : P_NEW: List with {<name>, <formatter>, [<unit_display_group>]}
+	##                    where <name> is a value_id, causing the formatter to be applied when
+	##                    the a value following :value in the styled_string is retrieved.
+	##                    <formatter> is a (sub)class of string_format, or a procedure
+	##                     or a handler, returning a string;
+	##                    <unit_display_group> is optional and used to retrieve 
+	##                    .sorted_unit_formats_and_strings() to
+	##                    get alternatives the end-user can select with a right-mouse
+	##                    click in the column headings.
+	##                    For <unit_display_group> to work, make sure <name>
+	##                    corresponds to the column_heading_id.
+	## Returns       : P_NEW
+	## Function      : Decache, loop over P_NEW and pass it to .add_value_formatter()
+	.formatter_table.empty()
+	.udp_table.empty()
+	# check if the user passed on formatter
+	_for i_class_or_field_name_plus_formatter_pair _over p_new.fast_elements()
+	_loop
+		_self.add_value_formatter(_scatter i_class_or_field_name_plus_formatter_pair)
+	_endloop
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.image_schemes << p_new
+	## Parameters    : P_NEW: List with {<scheme_name>, {<image_state_name>, <image>}} *or*
+	##                    with {<scheme_name>, <handler_or_proc>},
+	##                    as might be passed to .add_image_scheme()
+	## Returns       : P_NEW
+	## Function      : Purge self's current image scheme's and call
+	##                 .add_image_scheme() for each scheme in P_NEW.
+	##                 Image scheme's are used to find an image for
+	##                 the image_state(s) of a display tree.
+	## Note:         : See .add_image_scheme() for more comments!
+	.image_scheme_table.empty()
+	_for i_image_scheme_data _over p_new.fast_elements()
+	_loop
+		_self.add_image_scheme(_scatter i_image_scheme_data)
+	_endloop
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.value_schemes << p_new
+	## Parameters    : P_NEW: List with {<scheme_name>, {<value>, <image>}},
+	##                    as might be passed to .add_value_scheme()
+	## Returns       : P_NEW
+	## Function      : Purge self's current value scheme's and call
+	##                 .add_value_scheme() for each scheme in P_NEW.
+	##                 Value scheme's are used to find an image for
+	##                 the value of a display tree, when it is
+	##                 referenced in a toggle or radio toggle.
+	.value_scheme_table.empty()
+	_for i_value_scheme_data _over p_new.fast_elements()
+	_loop
+		_self.add_value_scheme(_scatter i_value_scheme_data)
+	_endloop
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.toggle_schemes << p_new
+	## Parameters    : P_NEW: List with {<scheme_name>, {<value_from>, <value_to>}},
+	##                    as might be passed to .add_toggle_scheme()
+	## Returns       : P_NEW
+	## Function      : Purge self's current toggle scheme's and call
+	##                 .add_toggle_scheme() for each scheme in P_NEW.
+	##                 Toggle scheme's are used to determine a new
+	##                 value when a current value is 'toggled'
+	##                 (most likely by the end-user clicking on a toggle).
+	##                 For 'toggles' all sorts of values can be
+	##                 mapped-to, as long as they exist in the value-scheme.
+	##                 For 'radio-toggles' the <value_to>s must be
+	##                 booleans or at least implemnet the .not method,
+	##                 since <value_to>.not will be set to
+	##                 associated radio-toggles.
+	.toggle_scheme_table.empty()
+	_for i_toggle_scheme_data _over p_new.fast_elements()
+	_loop
+		_self.add_toggle_scheme(_scatter i_toggle_scheme_data)
+	_endloop
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method string_styles_holder.default_style
+	## Parameters    : 
+	## Returns       : Self's default style if that has been set,
+	##                 otherwise .parent's default style is returned.
+	## Function      : 
+	>> _if ((l_default_style << .text_style_table.default_value) _isnt _unset)
+	   _then >> l_default_style
+	   _else >> .parent.default_style
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method string_styles_holder.default_style << p_new_style
+	## Parameters    : P_NEW_STYLE: A text style containing the
+	##                    default that is used if not is specified.
+	## Returns       : P_NEW_STYLE
+	## Function      : Set a new default text style to be
+	##                 used for self. This will be use when text styles are
+	##                 generated for colours, and for .row_height and .char_width.
+	##                 Note that, when the default style is set, .parent default
+	##                 style will not be used anymore! This is done
+	##                 on purpose, since the parent will have different styles
+	##                 (e.g. when automatically generated from colour names).
+	.row_height_cache << _unset 
+	.selected_row_style_cache << property_list.new()
+#	.stripe_style_cache.empty()
+	_for i_name, i_text_style _over .text_style_table.keys_and_elements()
+	_loop
+		# remove text styles that have been generated from colours
+		_if (colour.called(i_name) _is i_text_style.foreg_colour)
+		_then
+			.text_style_table.remove_key(i_name)
+			.highlight_text_style_table.remove_key(i_name)
+		_endif
+	_endloop
+	.highlight_text_style_table.default_value << _self.int!highlight_style_for(p_new_style)
+	>> .text_style_table.default_value << p_new_style
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={styled_text_format}, usage={external})
+_method string_styles_holder.background_colour
+	# Author         : GE Smallworld (Ken Korsmit)
+	# Date           : Oct/2001
+	#
+	## Parameters    : 
+	## Returns       : 
+	## Function      : 
+	## Methodology   :
+	>> _self.background_fill_style.colour.name
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method string_styles_holder.int!check_colour(p_colour)
+	## Parameters    : P_COLOUR: A colour, or the name of a colour
+	##                    (a symbol)
+	## Returns       : P_COLOUR or a colour generated with the name P_COLOUR.
+	## Function      : 
+	_if p_colour.is_class_of?(symbol)
+	_then
+		p_colour << colour.called(p_colour)
+	_endif
+	>> p_colour
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={styled_text_format}, usage={external})
+_method string_styles_holder.background_colour << p_colour
+	# Author         : GE Smallworld (Ken Korsmit)
+	# Date           : Oct/2001
+	#
+	## Parameters    : P_COLOUR: A colour, or the name of a colour
+	## Returns       : 
+	## Function      : 
+	## Methodology   :
+	_if ((p_colour << _self.int!check_colour(p_colour)) _is _unset)
+	_then
+		# default to while
+		_self.background_fill_style << fill_style
+	_else
+		_self.background_fill_style << fill_style.new(p_colour)
+	_endif
+	>> p_colour
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method string_styles_holder.default_font
+	## Parameters    : 
+	## Returns       : The font used by the default style.
+	## Function      : 
+	>> _self.default_style.font
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method string_styles_holder.row_height
+	## Parameters    : 
+	## Returns       : Height used for rows
+	## Function      : Checks if this height has been supplied,
+	##                 otherwise it will use the default height as
+	##                 supplied by _self.default_line_height
+	_if ((l_row_height << .row_height_cache) _is _unset)
+	_then
+		l_row_height << .row_height_cache << _self.default_row_height
+	_endif
+	>> l_row_height
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.col_width
+	## Parameters    : 
+	## Returns       : The width of a 'standard' character of the
+	##                 default font.
+	## Function      : 
+	## Methodology   : Use font.cell_width
+	>> _self.default_font.cell_width
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method string_styles_holder.text_style(p_key)
+	## Parameters    : P_KEY: Name of the text_style that is wanted.
+	##                 [P_SELECTED?]: If _true (false is default),
+	##                 then we want a text_style that can be used
+	##                 for drawing a selected item.
+	## Returns       : Text style identified by P_KEY.
+	## Function      : Check if we know the text style identified
+	##                 by P_KEY, if so return it. If not, check if
+	##                 we have a parent style holder and delegate
+	##                 the call. If not, check if 
+	##                 we can create it by using P_KEY as a colour
+	##                 name. If not, return the default text_style.
+	_local (l_value, l_found?) << .text_style_table.lookup_key(p_key)
+	_if l_found?
+	_then
+		_return l_value
+	_elif ((l_parent << .parent) _isnt _unset)
+	_then
+		_return l_parent.text_style(p_key)
+	_elif ((l_colour << colour.called(p_key)) _isnt _unset)
+	_then 
+		# we are in the top, exemplar one, no parent
+		# generate default styles for the know colour
+		# two results are returned, the 1st in unselected, the 2nd is selected
+		_return _self.add_text_style(p_key, l_colour)
+	_else
+		# no way to get this style, the default one is returned
+		condition.raise(:warning, :string, write_string("Text style '", p_key, "' not found"))
+	_endif
+	>> l_value
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method string_styles_holder.add_text_style(p_name, _optional p_colour, p_underline?, p_font, p_hypertext?, p_strike_through?)
+	## Parameters    : P_NAME: Name for the new text style, and
+	##                    which can be used in styled strings.
+	##                 [P_COLOUR]: A colour, *or* the name of a
+	##                    colour *or* a text style. In the latter case, that text
+	##                    style is used and all other arguments are ignored.
+	##                 [P_UNDERLINE?]: Whether
+	##                 [P_FONT]: A font, e.g. created with
+	##                    font.new_logical(); if not specified the
+	##                    'default font' will be used.
+	##                 [P_HYPERTEXT?]: If _true, the
+	##                    hypertext_click_notifier will be invoked it the end-user
+	##                    click on text with this style; defaults
+	##                    to P_UNDERLINE?.
+	##                 [P_STRIKE_THROUGH?]: If _true, a line will
+	##                    be drawn through the text
+	##
+	## Returns       : The new text style
+	## Function      : Adds a text style or creates one with the
+	##                 specified properties.
+	##                 Once a text_styles has been defined this
+	##                 way, their style-holder can be used for
+	##                 retrieving styles used in styled_strings
+	_local l_new, l_new_h
+	_if p_colour.is_class_of?(text_style)
+	_then
+		l_new << .text_style_table[p_name] << p_colour
+	_else 
+		_if ((p_colour << _self.int!check_colour(p_colour)) _is _unset) 
+		_then
+			p_colour << colour.called(:foreground)
+		_endif
+		_if p_font _is _unset 
+		_then
+			p_font << _self.default_font
+		_endif
+		l_new << .text_style_table[p_name] << text_style.new(p_colour, p_font, p_underline?, p_strike_through?)
+	_endif 
+	_if (p_hypertext?.default(p_underline?) _is _true)
+	_then
+		.hyper_text_styles.add(l_new)
+		.hyper_text_style_names.add(p_name)
+	_endif
+	l_new_h << .highlight_text_style_table[l_new] << _self.int!highlight_style_for(l_new)
+	>> (l_new, l_new_h)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method string_styles_holder.is_hypertext?(p_text_style)
+	## Parameters    : P_TEXT_STYLE: Name of a text_style that has
+	##                    been added with .add_text_style(),
+	##                    or a text style itself.
+	## Returns       : _true if P_TEXT_STYLE has been defined as a
+	##                 hypertext styles, _false otherwise.
+	## Function      : A hypertext style denotes that text
+	##                 displayed in this style acts as a hypertext line,
+	##                 i.e. if you click on it, it will take you elsewhere.
+	##                 Textstyles can be marked as a hypertext when
+	##                 they are added (.add_text_style()).
+	## Note          : It is a good habit to ensure all (or only)
+	##                 hypertext styles are underlined.
+	>> .hyper_text_styles.includes?(p_text_style) _orif
+		((l_p << .parent) _isnt _unset) _andif (l_p.is_hypertext?(p_text_style))
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.selected_row_style(p_height)
+	## Parameters    : P_HEIGHT: In pixels
+	## Returns       : Line_style to be used for denoting a selection, of
+	##                    height P_HEIGHT and colour .selected_colour
+	## Function      :
+	p_height << _if (p_height _is _unset)
+		    _then >> _self.row_height
+		    _else >> p_height    
+		    _endif.abs
+	_if ((l_selected_row_style << .selected_row_style_cache[p_height]) _is _unset)
+	_then
+		l_selected_row_style << .selected_row_style_cache[p_height] << line_style.new(_self.selected_colour, p_height)
+	_endif
+	>> l_selected_row_style
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.selected_colour << p_new
+	## Parameters    : P_NEW: A colour
+	## Returns       : P_NEW
+	## Function      : Decaches currently used selection line
+	##                 styles, and sets the new colour to be used
+	##                 for highlighting a selection.
+	.selected_row_style_cache << property_list.new()
+	>> .selected_colour << p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.stripe_style(p_height)
+	## Parameters    : P_HEIGHT: In pixels
+	## Returns       : Line_style to be used for drawing stripes of
+	##                    height P_HEIGHT and colour .stripe_colour
+	## Function      : 
+	_if ((l_stripe_style << .stripe_style_cache[p_height]) _is _unset)
+	_then
+		l_stripe_style << .stripe_style_cache[p_height] <<
+			line_style.new(_self.stripe_colour, _if (p_height _is _unset) _then >> p_height _else >> _self.row_height _endif)
+	_endif
+	>> l_stripe_style
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.stripe_colour << p_new
+	## Parameters    : P_NEW: A colour
+	## Returns       : P_NEW: 
+	## Function      : Colour used for drawing stripes (for
+	##                 alternating rows); preferably this is not changed so the
+	##                 same colour is used system wide; defaults to colour.called(:stripes). 
+	.stripe_style_cache << property_list.new()
+	>> .stripe_colour << p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method string_styles_holder.add_image_scheme(p_name, _gather p_state_image_pairs)
+	## Parameters    : P_NAME: Name of the image scheme, can be
+	##                    used inside a styled string following the :image placeholder.
+	##                 {P_STATE_IMAGE_PAIRS}: This can be in two formats:
+	##                 1) List of <state_name>, <image>,
+	##                    where <state_name> is a state as
+	##                    described below, and <image> is either the name of an image
+	##                    in the !window_system!, or a simple_vector containing the
+	##                    bitmap resource name, and optionally the module_name.
+	##                    If the module name is not specified, the :module_name
+	##                    property will be used, and if that is also unspecified, the
+	##                    resource will be looked up in the products.
+	##                 2) A procedure or handler, which will be
+	##                    passed P_TREE_OR_STATE: (see
+	##                    .resolve_image()) and P_IMAGE_NAME, and should return the
+	##                    name of the desired image (this can be a simple_vector
+	##                    {<bitmap_name>, [<module_name>]>, or just simply an <image_name>.
+	##                    In case the string_style_holder is used
+	##                    inside a tree_item, one may safely assume that
+	##                    P_TREE_OR_STATE is a tree, otherwise it may be any
+	##                    value_holder or a state (symbol).
+	## Returns       : The new image_scheme (which for the moment
+	##                 is a property_list, but that might change).
+	## Function      : Adds an image scheme to resolve images
+	##                 depending on the state of a display tree.
+	##
+	## Currently allowed states are (for situation 1):
+	## Leaf:               image to use when tree is a leaf
+	## Expanded:           image to use when expanded
+	## Collapsed:          image to use when collapsed
+	## Selected:           image to use when the tree is selected
+	## Default:            the default image to resort to if no
+	##                     explicit image is defined for the state
+	##                     the tree is in.
+	## However, it is possible that subclasses of display_tree define new states.
+	##
+	## An example (for situation 2):
+	## In the styled string: {:image, :a_bitmap, :tab, :value, :user}
+	## In tree_item.new:     :image_schemes, {{:a_bitmap, handler.new(bla, :|bitmap_name_for()|)}},
+	## On class bla:         _method bla.bitmap_name_for(p_display_tree)
+	##                      	 >> _if (p_display_tree.key = ???)
+	##	                            _then >> {:<image_name_on_disk>, :<module_name>}
+	##                      	    _else >> :<image_name_in_image>
+	##                      	    _endif
+	##                       _endmethod
+	_local l_first << p_state_image_pairs.an_element()
+	_local l_scheme << _if (p_state_image_pairs.size = 1) _andif l_first.responds_to?(:|invoke()|)
+			   _then >> l_first
+			   _else >> property_list.new_with(_scatter p_state_image_pairs) 
+			   _endif
+	>> .image_scheme_table[p_name] << l_scheme
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.add_value_scheme(p_name, _gather p_value_state_pairs)
+	## Parameters    : P_NAME: Name of the value scheme, can be
+	##                    used inside a styled string following the :toggle/:radio_toggle placeholder.
+	##                    Two backstop names have been defined for
+	##                    :toggle/:radio_toggle themselves, but that is restricted/internal.
+	##                 {P_VALUE_STATE_PAIRS}: A list of {<value>, <image_name>}'s.
+	##                    Value is the value as it might be
+	##                    retrieved with display_tree.value(), for most toggle
+	##                    schemes that will be boolean's
+	##                    (kleenean's), but custom schemes (incl. toggle_scheme's) may
+	##                    be defined.
+	## Returns       : The new value scheme (which for the moment
+	##                 is a property_list, but that might change).
+	## Function      : Adds a value scheme to resolve images for
+	##                 toggle values depending on a certain value of a display tree.
+	##
+	## The default state scheme maps:
+	## _true    -> :true
+	## _false   -> :false
+	## _maybe   -> :maybe
+	>> .value_scheme_table[p_name] << property_list.new_with(_scatter p_value_state_pairs)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.add_toggle_scheme(p_name, _gather p_from_to_pairs)
+	## Parameters    : P_NAME: Name of the toggle scheme, is used
+	##                    when the end-user toggles a value denoted inside a styled
+	##                    string following the :toggle/:radio_toggle placeholder. 
+	##                    Two backstop names have been defined for
+	##                    :toggle/:radio_toggle themselves, but that is restricted/internal.
+	##                 {P_FROM_TO_PAIRS}: A list of {<old_value>, <new_value>}'s.
+	##                    Old_value is the current value, before it
+	##                    is changed to new_value. Old_value is retrieved with
+	##                    display_tree.value(), and new value is set with
+	##                    display_tree.value()<<. For most toggle schemes values will be boolean's
+	##                    (kleenean's), but custom schemes (incl. toggle_scheme's) may
+	##                    be defined. Note that for radio_toggle
+	##                    scheme booleans may be the <new_value>!
+	## Returns       : The new toggle scheme (which for the moment
+	##                 is a property_list, but that might change).
+	## Function      : Adds a toggle  scheme to change values when
+	## end-            user toggles a value.
+	>> .toggle_scheme_table[p_name] << property_list.new_with(_scatter p_from_to_pairs)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.add_value_formatter(p_value_name, p_formatter, _optional p_unit_display_group)
+	## Parameters    : P_VALUE_NAME The identifier used
+	##                    after :value in the styled string, to get an indexed value
+	##                    out of the display tree. 
+	##                 P_FORMATTER: Formatter to be applied to the
+	##                    result of display_tree.value(P_VALUE_NAME)
+	##                 [P_UNIT_DISPLAY_GROUP]: Optional unit
+	##                    display that can offer alternative
+	##                    formatters for P_VALUE_NAME.
+	## Returns       : -
+	## Function      : Store a P_FORMATTER to be applied when a
+	##                 value in a styled_string gets referenced a
+	##                 P_VALUE_NAME.
+	.formatter_table[p_value_name] << p_formatter
+	.udp_table[p_value_name] << p_unit_display_group
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.formatter(p_value_name)
+	## Parameters    : P_VALUE_NAME: The identifier used
+	##                    after :value in the styled string, to get an indexed value
+	##                    out of the display tree. 
+	## Returns       : The value formatter stored for P_VALUE_NAME, 
+	##                 _unset if there is not any.
+	## Function      : Checks formatters that have been defined on
+	##                 _self, and if none is found the parent is checked.
+	>> _if ((l_f << .formatter_table[p_value_name]) _isnt _unset)
+	   _then >> l_f
+	   _elif ((l_p << .parent) _isnt _unset)
+	   _then >> l_p.formatter(p_value_name)
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.is_formatter_for?(p_formatter, p_value_name)
+	## Parameters    : P_FORMATTER: A formatter (or procedure that
+	##                    returns a string, given some input).
+	##                 P_VALUE_NAME: The identifier used
+	##                    after :value in the styled string, to get an indexed value
+	##                    out of the display tree. Alternatively,
+	##                    this may also be the name of the class
+	##                    that is retrieved with :value.
+	## Returns       : _true if P_FORMATTER will be used for P_VALUE_NAME,
+	##                 _false otherwise.
+	## Function      : 
+	>> (_self.formatter(p_value_name) _is p_formatter)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.formatter(p_value_name) << p_formatter
+	## Parameters    : P_VALUE_NAME: The identifier used
+	##                    after :value in the styled string, to get an indexed value
+	##                    out of the display tree. Alternatively,
+	##                    this may also be the name of the class
+	##                    that is retrieved with :value.
+	##                 P_FORMATTER: A formatter (or procedure that
+	##                    returns a string, given some input).
+	## Returns       : P_FORMATTER
+	## Function      : Stores P_FORMATTER to be used for P_VALUE_NAME,
+	##                 and give a :formatter_has_been_set change notification.
+	.formatter_table[p_value_name] << p_formatter
+	_self.changed(:formatter_has_been_set, p_value_name, p_formatter)
+	>> p_formatter
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.has_alternative_formats?(p_value_name)
+	## Parameters    : P_VALUE_NAME: The identifier used
+	##                    after :value in the styled string, to get an indexed value
+	##                    out of the display tree. Alternatively,
+	##                    this may also be the name of the class
+	##                    that is retrieved with :value.
+	## Returns       : _true if a unit display group has been
+	##                 defined for P_VALUE_NAME *and* this
+	##                 offers alternative formatters (i.e. the
+	##                 group contains more than 1).
+	## Function      : 
+	>> _if ((l_unit_display_group << _self.unit_display_group(p_value_name)) _isnt _unset)
+	   _then >> (l_unit_display_group.size > 1)
+	   _else >> _false 
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_iter _method string_styles_holder.formatters_and_strings_for(p_value_name)
+	## Parameters    : P_VALUE_NAME: The identifier used
+	##                    after :value in the styled string, to get an indexed value
+	##                    out of the display tree. Alternatively,
+	##                    this may also be the name of the class
+	##                    that is retrieved with :value.
+	## Returns       : if a unit display group has been
+	##                 defined for P_VALUE_NAME,
+	##                 iterations of
+	##                 1) unit formats, and
+	##                 2) string names describing these
+	##                 are returned
+	## Function      : 
+	_if ((l_unit_display_group << _self.unit_display_group(p_value_name)) _isnt _unset)
+	_then
+		_local (l_formats, l_strings) << l_unit_display_group.sorted_unit_formats_and_strings
+		_for i_index  _over range(1, l_formats.size)
+		_loop
+			_loopbody (l_formats[i_index], l_strings[i_index])
+		_endloop
+	_endif
+_endmethod
+$
+
+# ----------
+# ToDo: We want to have images read as resources from a module
+# ----------
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.add_image(p_name, p_colour_table, p_width, p_height, p_pixel_data)
+	# Author         : GE Smallworld (Ken Korsmit)
+	# Date           : Oct/2001
+	#
+	## Parameters    : P_NAME: Name under which this internal image
+	##                    will be known in window_system.images_data.
+	##                 P_COLOUR_TABLE: Collection containing simple_vectors, each:
+	##                  * {<data_entry>, <colour_name>};
+	##                    or containing just colour names
+	##                  * <colour_name> (in which case the colour
+	##                    name is used as <data_entry>);
+	##                    alternatively you can also specify
+	##                  * {<data_entry>, <colour_red_float>,
+	##                    <colour_green_float>, <colour_blue_float>}
+	##                 P_WIDTH, P_HEIGHT: Dimensions of the image
+	##                 P_PIXEL_DATA: Simple_vector with P_WIDTH * P_HEIGHT
+	##                    data_entries. Each <data_entry> is either 0 or a
+	##                    symbol defined in P_COLOUR_TABLE.
+	## Returns       : Property list as it has been passed to
+	##                 window_system.images_data[P_NAME] 
+	## Function      : Create a new internal image that does not
+	##                 exist on disk as a resource, and that will work on all platforms
+	_for i_index, i_colour _over p_colour_table.fast_keys_and_elements()
+	_loop
+		_if symbol.is_class_of?(l_name << l_colour_name << i_colour) _orif
+		    (simple_vector.is_class_of?(i_colour) _andif
+		     symbol.is_class_of?(l_colour_name << i_colour[2]) _andif
+		     ((l_name << i_colour[1]) _isnt _unset))
+		_then
+			_if ((l_colour << colour.called(l_colour_name)) _is _unset)
+			_then
+				l_colour << condition.raise(:error, :string,
+					write_string("Colour name ", l_colour_name, " not found"))
+			_endif
+			# colours in our table have been ungamma-corrected since they
+			# will be gamma corrected on realisation. However, colours used
+			# for internal images, will not be gamma corrected, so we have
+			# to undo the un-gamma correction.
+			p_colour_table[i_index] << {l_name, l_colour.red, l_colour.green, l_colour.blue}
+		_endif
+	_endloop
+	>> window_system.images_data[p_name] << property_list.new_with(:colour_table, p_colour_table,
+								       :width, p_width,
+								       :height, p_height,
+								       :pixel_data, p_pixel_data,
+								       :|gamma_correct?|, _true)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.image(p_image_name, p_window)
+	## Parameters    : P_IMAGE_NAME: Name of an internal image. It can also be a
+	##                    {<resource_bitmap_name>, <module_name>}.
+	##                 P_WINDOW: Canvas P_IMAGE_NAME will be
+	##                    rendered on.
+	## Returns       : 1) A bitmap if resources are supported and
+	##                    found; the name of an internal image otherwise.
+	##                 2) True if a bitmap is returned, _false if
+	##                    an internal image has been found.
+	## Function      : Retrieve the image named P_IMAGE_NAME, if
+	##                 necessary instantiate it with P_WINDOW.
+	_local (l_image, l_raster?) << _self.int!image(p_image_name)
+	_if _not l_raster?
+	_then
+		l_image << !window_system!.image(p_window, l_image)
+	_endif
+	>> (l_image, l_raster?)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.image_width_and_height(p_image_name)
+	## Parameters    : P_IMAGE_NAME: Name of an internal image. It can also be a
+	##                    {<resource_bitmap_name>, <module_name>}.
+	## Returns       : 1) The width of the image found;
+	##                 2) The height of the image found.
+	## Function      : 
+	_local (l_image, l_raster?) << _self.int!image(p_image_name)
+	>> _if l_raster?
+	   _then
+		   # return width/height info for raster image
+		   >> l_image.size()
+	   _else
+		   _local l_image_data << !window_system!.images_data[l_image]
+		   # is always found, there is a backstop icon
+		   >> (l_image_data[:width], l_image_data[:height])
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.resolve_image_scheme(p_image_scheme_name)
+	## Parameters    : P_IMAGE_SCHEME_NAME: Name of an image scheme.
+	## Returns       : 
+	## Function      : 
+	## Methodology   :
+	_if ((l_image_scheme << .image_scheme_table[p_image_scheme_name]) _is _unset) _andif
+	    ((l_parent << .parent) _isnt _unset)
+	_then
+		_return l_parent.resolve_image_scheme(p_image_scheme_name)
+	_endif
+	>> l_image_scheme
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.text_width_and_height(p_text, p_text_style)
+	## Parameters    : P_TEXT: A string
+	##                 P_TEXT_STYLE: Normal text style
+	## Returns       : 1) Width of P_TEXT displayed in P_TEXT_STYLE
+	##                 2) Height of P_TEXT displayed in P_TEXT_STYLE
+	## Function      : Determine dimension of P_TEXT displayed in
+	##                 P_TEXT_STYLE, and compute width and height.
+	_local (l_xmin, l_ymax, l_xmax, l_ymin) << p_text_style.font.string_box(p_text)
+	>> l_xmax, (l_ymax - l_ymin)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.message(p_id, _optional p_default, _gather p_args)
+        ## Returns the lookup message for message ID args are: optional
+        ## default_string and arguments for subsitution in the message
+        ## string
+	## The gen_graphics groups is used as message_accessor.
+	>> _self.message_accessor.human_string(p_id, p_default, _scatter p_args)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.ellipses_message
+	## Parameters    : -
+	## Returns       : String to be added when strings are cut-off.
+	## Function      : Caches the message obtained by :ellipses,
+	##                 and have it default to '...'
+	## Methodology   : .int!ellipses_message is used as a cache.
+	>> _if ((l_ellipses_message << _self.int!ellipses_message) _isnt _unset)
+	   _then >> l_ellipses_message
+	   _else >> _self.int!ellipses_message << _self.message(:ellipses, "...")
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=deprecated, topic={tree_item})
+_method string_styles_holder.format_value(p_value, _optional p_field_name)
+	## -------Deprecated------
+	## Reason     : Conformity with other formatting classes.
+	## Use instead: format()
+	## Action     : Remove at next release.
+	## -----------------------
+	## Use .format() instead.
+	 >> _self.format(p_value, p_field_name)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.resolve_value_scheme(p_value_scheme_name)
+	## Parameters    : P_VALUE_SCHEME_NAME
+	## Returns       : Value scheme defined as P_VALUE_SCHEME_NAME,
+	##                 _unset if there are not any.
+	## Function      : Check out if we have one defined as P_VALUE_SCHEME_NAME,
+	##                 otherwise return the parent's one.
+	_if ((l_value_scheme << .value_scheme_table[p_value_scheme_name]) _is _unset) _andif
+	    ((l_parent << .parent) _isnt _unset)
+	_then
+		_return l_parent.resolve_value_scheme(p_value_scheme_name)
+	_endif
+	>> l_value_scheme
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.resolve_toggle_scheme(p_toggle_scheme_name)
+	## Parameters    : P_TOGGLE_SCHEME_NAME
+	## Returns       : Value scheme defined as P_TOGGLE_SCHEME_NAME,
+	##                 _unset if there are not any.
+	## Function      : Check out if we have one defined as P_TOGGLE_SCHEME_NAME,
+	##                 otherwise return the parent's one.
+	_if ((l_toggle_scheme << .toggle_scheme_table[p_toggle_scheme_name]) _is _unset) _andif
+	    ((l_parent << .parent) _isnt _unset)
+	_then
+		_return l_parent.resolve_toggle_scheme(p_toggle_scheme_name)
+	_endif
+	>> l_toggle_scheme
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method string_styles_holder.resolve_image(p_image_name, p_tree_or_state, _optional p_styled_string)
+	## PARAMETERS    : P_IMAGE_NAME: Name of an image. This can be
+	##                    a simple_vector {<bitmap_name>, [<module_name>]>,
+	##                    or just simply an <image_name>. 
+	##                 P_TREE_OR_STATE: If _unset, the :default
+	##                    state is used, if it is a symbol, this will be used as a
+	##                    state, otherwise the iterator .image_states(<image_name>)
+	##                    will be send to get states. The first state for which an
+	##                    image is known will be used.
+	##                 [P_STYLED_STRING]: Optional styled string in
+	##                    which :image, P_IMAGE_NAME is used.
+	##                    In case P_IMAGE_NAME refers to an image,
+	##                    an image scheme may be defined and the
+	##                    image reference in P_STYLED_STRING can be
+	##                    replaced with a reference for this to optimise image retrieval.
+	## Returns       : 1) Name of an image that is known, this
+	##                    defaults to :default, an internal image
+	##                    that is always there.
+	##                 2) Boolean, _true if image P_IMAGE_NAME
+	##                    exists, _false if a :default has been used.
+	## Function      : Check out if P_IMAGE_NAME refers to an
+	##                 image_scheme, an internal image, or an
+	##                 resource that exists on disk.
+	##                 Return the name of a safe default image if
+	##                 P_IMAGE_NAME does not exist. (This may be
+	##                 slow since we do not want to cache that, it refers to
+	##                 something that should be fixed.)
+	##                 Use P_TREE_OR_STATE to get an image if we
+	##                 have an image scheme.
+	##                 Optimise for future use with P_STYLED_STRING
+	##                 if possible.
+	# check if a resource image is referenced
+	_if simple_vector.is_class_of?(p_image_name)
+	_then
+		(l_image_name, l_module_name) << (_scatter p_image_name)
+	_else
+		# get the icon scheme
+		l_image_scheme << _self.resolve_image_scheme(l_image_name << p_image_name)
+	_endif
+	_if (l_image_scheme _is _unset)
+	_then
+		# check if the name exists as a raster
+		_try
+			l_module_name << l_module_name.default(.module_name)
+			smallworld_product.get_raster_image(l_image_name, l_module_name)
+			l_image_scheme << _self.add_image_scheme(l_image_name, :default, {l_image_name, l_module_name})
+			# replace the reference for the next time
+			_if (p_styled_string _isnt _unset) _andif (p_image_name _isnt l_image_name)
+			_then
+				p_styled_string.int!replace_image_ref(p_image_name, l_image_name)
+			_endif
+		_when resource_not_found_warning
+		      # check if the name exists as an image in window system
+		      _if (!window_system!.images_data[p_image_name] _isnt _unset)
+		      _then
+			      # create an image scheme
+			      l_image_scheme << _self.add_image_scheme(p_image_name, :default, p_image_name)
+		      _else
+			      # return the default image name
+			      _return (:default, _false)
+		      _endif
+		_endtry
+	_endif
+	# check if we have a handler or a procedure
+	_if _not l_image_scheme.is_class_of?(property_list)
+	_then
+		# user handler might return a image + module
+		_if ((l_image_name << l_image_scheme(p_tree_or_state, l_image_name)) _is _unset)
+		_then
+		_elif simple_vector.is_class_of?(l_image_name)
+		_then
+			_return _self.resolve_image(l_image_name, p_tree_or_state)
+		_else 
+			_return (l_image_name, _true)
+		_endif
+	# get the right image for the current state
+	_elif (p_tree_or_state _is _unset)
+	_then
+		_if ((l_image_name << l_image_scheme[:default]) _isnt _unset)
+		_then
+			_return (l_image_name, _true)
+		_endif
+	_elif symbol.is_class_of?(p_tree_or_state)
+	_then
+		_if ((l_image_name << l_image_scheme[p_tree_or_state]) _isnt _unset)
+		_then
+			_return (l_image_name, _true)
+		_endif
+	_else 
+		_for i_state _over p_tree_or_state.image_states(p_image_name)
+		_loop
+			_if ((l_image_name << l_image_scheme[i_state]) _isnt _unset)
+			_then
+				_return (l_image_name, _true)
+			_endif
+		_endloop
+	_endif
+	# return the default image name
+	>> (:default, _false)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.resolve_value(p_value, p_toggle_type, _optional p_field_name)
+	## Parameters    : P_VALUE: Value for which we want an image.
+	##                 P_TOGGLE_TYPE: :toggle or :radio_toggle
+	##                 [P_FIELD_NAME] Index used after :toggle or
+	##                    :radio_toggle in the original styled string.
+	## Returns       : An image name that we can use to depict
+	##                 P_VALUE, if defaults to :default.
+	## Function      : Find an value_scheme for P_FIELD_NAME, if
+	##                 this is not found find one for P_TOGGLE_TYPE
+	##                 (which always succeeds).
+	##                 Return the image name stored in the value scheme
+	##                 for P_VALUE.
+	_local l_value_scheme << _self.resolve_value_scheme(p_field_name)
+	_if (l_value_scheme _is _unset)
+	_then
+		# this should always succeed
+		l_value_scheme << _self.resolve_value_scheme(p_toggle_type)
+	_endif
+	>> l_value_scheme[p_value].default(:default)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.resolve_toggle(p_toggle, p_toggle_type, _optional p_field_name)
+	## Parameters    : P_VALUE: Value that we want to map on to a
+	##                    new value.
+	##                 P_TOGGLE_TYPE: :toggle or :radio_toggle
+	##                 [P_FIELD_NAME] Index used after :toggle or
+	##                    :radio_toggle in the original styled string.
+	## Returns       : An value that we can set as a new value now
+	##                 that the old value is toggled. This default
+	##                 to _true.
+	##                 Note 
+	## Function      : Find an toggle_scheme for P_FIELD_NAME, if
+	##                 this is not found find one for P_TOGGLE_TYPE
+	##                 (which always succeeds).
+	##                 Return the mapped-to value stored in the toggle scheme
+	##                 for the mapped-from value P_VALUE.
+	## Note          : For :radio_toggle's, the value returned
+	##                 needs to respond to .not, which will be set to all other
+	##                 linked radio toggles. For :toggle's, any value is allowed,
+	##                 but it should occur in a value_scheme to be displayed properly.
+	_local l_toggle_scheme << _self.resolve_toggle_scheme(p_field_name)
+	_if (l_toggle_scheme _is _unset)
+	_then
+		# this should always succeed
+		l_toggle_scheme << _self.resolve_toggle_scheme(p_toggle_type)
+	_endif
+	>> l_toggle_scheme[p_toggle].default(_true)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method string_styles_holder.int!image(p_image_name)
+	## Parameters    : P_IMAGE_NAME: Name of an internal image. It can also be a
+	##                    {<resource_bitmap_name>, <module_name>}.
+	## Returns       : 1) A bitmap if resources are supported and
+	##                    found; the name of an internal image otherwise.
+	##                 2) True if a bitmap is returned, _false if
+	##                    an image_name has been found.
+	## Function      : 
+	# ToDo: This is problem for 3.20, only use rasters only in 3.21 and higher
+	# The restricition of resources being specified in a
+	# simple-vector can be removed when we do not use internal
+	# images anymore (maybe appart from the default one)
+	_if _self.int!allow_rasters? _andif simple_vector.is_class_of?(p_image_name)
+	_then
+		(p_image_name, l_module_name) << (_scatter p_image_name)
+		_try
+			_return (smallworld_product.get_raster_image(p_image_name, l_module_name.default(.module_name)), _true)
+		_when resource_not_found_warning
+		_endtry
+	_endif
+	>> _if (!window_system!.images_data[p_image_name] _isnt _unset)
+	   _then
+		   >> (p_image_name, _false)
+	   _else
+		   >> (:default, _false)
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.stripe_colour
+	## Parameters    : 
+	## Returns       : Colour to be used for stripes, if _unset it
+	##                 defaults to colour.called(:stripes)
+	## Function      : 
+	_if ((l_colour << .stripe_colour) _is _unset)
+	_then
+		l_colour << .stripe_colour << colour.called(:stripes)
+	_endif
+	>> l_colour
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.text_styles
+	## Parameters    : 
+	## Returns       : A new hash_table containing all self's
+	##                 current text styles
+	## Function      : 
+	_local l_text_styles << 
+		_if (.parent _isnt _unset)
+		_then >> .parent.text_styles
+		_else >> hash_table.new()
+		_endif
+	_for i_name, i_text_style _over .text_style_table.fast_keys_and_elements()
+	_loop
+		l_text_styles[i_name] << i_text_style
+	_endloop
+	>> l_text_styles
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method string_styles_holder.int!highlight_style_for(p_text_style)
+	## Parameters    : P_TEXT_STYLE: A new text style, one that is
+	##                    acceptable for displaying trees and that could have been
+	##                    created with the .add_text_style() method.
+	## Returns       : A text_style, created from P_TEXT_STYLE,
+	##                 that has the hightlight foreground colour.
+	## Function      : Check the .highlight_text_style_table if
+	##                 there is already an appriate text_style
+	##                 present. If so, return that. If not, create
+	##                 a new one.
+	_local l_font << p_text_style.font
+	_local l_overstrike? << p_text_style.overstrike?
+	_local l_underline?  << p_text_style.underline?
+	# next two things should currently not have been used (may be in future?)
+	_local l_fixed_size? << p_text_style.fixed_size?
+	_local l_multiline?  << p_text_style.multiline?
+	# check if we already know this one
+	_block
+		_local l_text_style << .highlight_text_style_table.default_value
+		_if (l_text_style _isnt _unset) _andif (l_font = l_text_style.font) _andif
+		    (l_overstrike? _is l_text_style.overstrike?) _andif
+		    (l_underline?  _is l_text_style.underline?)  _andif
+		    (l_fixed_size? _is l_text_style.fixed_size?) _andif
+		    (l_multiline?  _is l_text_style.multiline?)
+		_then
+			_return l_text_style
+		_endif
+	_endblock
+	_for i_text_style _over .highlight_text_style_table.fast_elements()
+	_loop
+		_if (l_font = i_text_style.font) _andif
+		    (l_overstrike? _is i_text_style.overstrike?) _andif
+		    (l_underline?  _is i_text_style.underline?)  _andif
+		    (l_fixed_size? _is i_text_style.fixed_size?) _andif
+		    (l_multiline?  _is i_text_style.multiline?)
+		_then
+			_return i_text_style
+		_endif
+	_endloop
+	# create a new one
+	>> text_style.new_with_properties(:font, l_font,
+					  :colour, colour.called(:highlight_text),
+					  :overstrike?, l_overstrike?,
+					  :underline?,  l_underline?,
+					  :fixed_size?, l_fixed_size?,
+					  :multiline?,  l_multiline?)
+					  # ToDo: Test if this helps?
+#					  :fill?,       _true,
+#					  :fill_style, _self.highlight_fill_style)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method string_styles_holder.selected_text_style_for(p_text_style)
+	## Parameters    : P_TEXT_STYLE: A text_style that is known to self.
+	## Returns       : The highlighted version (for selection) of P_TEXT_STYLE.
+	## Function      : Obtain ^^^.
+	>> _if ((l_value << .highlight_text_style_table[p_text_style]) _isnt _unset)
+	   _then
+		   >> l_value
+	   _elif ((l_value << .parent) _isnt _unset)
+	   _then
+		   >> l_value.selected_text_style_for(p_text_style)
+	   _elif ((l_value << _self.exemplar) _isnt _self)
+	   _then
+		   >> l_value.selected_text_style_for(p_text_style)
+	   _else
+		   >> p_text_style
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method string_styles_holder.row_height << p_new
+	# Author         : GE Smallworld (Ken Korsmit)
+	# Date           : Oct/2001
+	#
+	## Parameters    : P_NEW: Height including margins needed for a row
+	##                 where a styled string is displayed using the default style.
+	## Returns       : P_NEW
+	## Function      : Sets self.row_height to P_NEW
+	## Note          : This property should only be set when the
+	##                 string_styles_holder is created, or it should be set on the
+	##                 tree_item that contains it.
+	.row_height_cache << p_new
+	_self.changed(:height, p_new)
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_method string_styles_holder.expand_scheme
+	## Parameters    : 
+	## Returns       : Name of icon scheme to be used for expansion
+	## Function      : 
+	>> _if _self.document_style?
+	   _then >> :document_expand
+	   _else >> :normal_expand
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.unit_display_group(p_value_name)
+	## Parameters    : P_VALUE_NAME: The identifier used
+	##                    after :value in the styled string, to get an indexed value
+	##                    out of the display tree. 
+	## Returns       : The unit display group stored for P_VALUE_NAME, 
+	##                 _unset if there is not any.
+	## Function      : Checks unit display groups that have been defined on
+	##                 _self, and if none is found the parent is checked.
+	## Note          : There are no default ones, the API user has
+	##                 to specify it when setting value-formatters.
+	>> _if ((l_udg << .udp_table[p_value_name]) _isnt _unset)
+	   _then >> l_udg
+	   _elif ((l_p << .parent) _isnt _unset)
+	   _then >> l_p.unit_display_group(p_value_name)
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.add_class_formatter(p_class_name, p_formatter)
+	## Parameters    : P_CLASS_NAME: The name of a class of a value retrieved
+	##                    when :value occurs in a styled string. 
+	##                 P_FORMATTER: Formatter to be applied to the
+	##                    result of display_tree.value(<value_id>).
+	## Returns       : -
+	## Function      : Store a P_FORMATTER to be applied when a
+	##                 value in a styled_string is of class P_CLASS_NAME.
+	## Note          : If there is a value_formatter that applies to <value_id>,
+	##                 this will take precedence over the value_formatter.
+	.class_formatter_table[p_class_name] << p_formatter
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.class_formatters << p_new
+	## Parameters    : P_NEW: List with {<name>, <formatter>, [<unit_display_group>]}
+	##                    where <name> is a class_name,
+	##                    causing the formatter to be applied when the a value following
+	##                    :value in the styled_string is retrieved, and the
+	##                    retrieved value is of the right class <name>.
+	##                    <formatter> is a (sub)class of string_format, or a procedure
+	##                    or a handler, returning a string;
+	##                    <unit_display_group> is optional and used to retrieve 
+	##                    .sorted_unit_formats_and_strings() to
+	##                    get alternatives the end-user can select with a right-mouse
+	##                    click in the column headings.
+	##                    For <unit_display_group> to work, make sure <name>
+	##                    corresponds to the column_heading_id.
+	## Returns       : P_NEW
+	## Function      : Decache, loop over P_NEW and pass it to .add_value_formatter()
+	.formatter_table.empty()
+	.udp_table.empty()
+	# check if the user passed on formatter
+	_for i_class_or_field_name_plus_formatter_pair _over p_new.fast_elements()
+	_loop
+		_self.add_class_formatter(_scatter i_class_or_field_name_plus_formatter_pair)
+	_endloop
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.format(p_value, _optional p_field_name, p_value_holder)
+	## Parameters    : P_VALUE: An arbitrary value that come from
+	##                    the display_tree.value(), it may be
+	##                    _unset or a field value, or any other object
+	##                 [P_FIELD_NAME]: Optional name of the field
+	##                    or index to the display_tree.value() method.
+	##                    Will be use to retrieve a formatter. If
+	##                    not specified, the class_name of P_VALUE
+	##                    will be used instead.
+	##                 [P_VALUE_HOLDER]: From which P_VALUE comes,
+	##                    e.g. a display_tree. This will be passed
+	##                    to formatters that are handlers.
+	## Returns       : Formatted version of P_VALUE. If P_VALUE is
+	##                 unset, it returns !current_locale![:unset_value]
+	## Function      : Retrieves the appropriate formatter for
+	##                 P_FIELD_NAME and uses it to format P_VALUE.
+	##                 First, the value-formatters are checked, if
+	##                 one has been defined for P_FIELD_NAME. If
+	##                 none is found, then the class formatters for
+	##                 P_VALUE's class are checked. If no
+	##                 formatters can be found, the default formatter
+	##                 (stored as class :default) is used.
+	_if (p_value _is _unset)
+	_then
+		_return !current_locale![:unset_value]
+	_elif ((l_formatter << _self.formatter(p_field_name)) _isnt _unset) _orif 
+	      ((l_formatter << _self.class_formatter(p_value.class_name)) _isnt _unset)
+	_then
+		# we have got one
+	_else#
+		l_formatter << _self.class_formatter(:default)
+	_endif
+	 >> _try
+		>> _if procedure.is_class_of?(l_formatter)
+		   _then >> l_formatter(p_value)
+		   _elif handler.is_class_of?(l_formatter)
+		   _then
+			   >> l_formatter(p_value, p_field_name, p_value_holder, _self)
+		   _elif l_formatter _isnt _unset
+		   _then >> l_formatter.format(p_value)
+		   _endif
+	    _when error
+		  >> _self.message(:error, "(Error)")
+	    _endtry
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.class_formatter(p_class_name)
+	## Parameters    : P_CLASS_NAME: The name of a class of a value retrieved
+	##                    when :value occurs in a styled string. 
+	## Returns       : The value formatter stored for P_CLASS_NAME, 
+	##                 _unset if there is not any.
+	## Function      : Checks formatters that have been defined on
+	##                 _self, and if none is found the parent is checked.
+	>> _if ((l_f << .class_formatter_table[p_class_name]) _isnt _unset)
+	   _then >> l_f
+	   _elif ((l_p << .parent) _isnt _unset)
+	   _then >> l_p.class_formatter(p_class_name)
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method string_styles_holder.note_change(p_who, p_what, _gather p_args)
+	## 
+	## Check if we need to setup line/fill/text- styles on a system restart
+	## It is important to know that the window_system has been
+	## (re-) initialised already.
+	##
+	_if (p_who _is system) _andif (p_what _is :image_restore)
+	_then
+		_self.int!reflect_system_styles()
+	_elif (p_who _is message_handler) _andif (p_what _is :initialised_language)
+	_then
+		_self.int!init_standard_class_formatters()
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.selected_colour
+	## Colour to be used by selections, if not set,
+	## colour.called(:highlight) will be used.
+	>> _if ((l_sc << .selected_colour) _is _unset)
+	   _then >> colour.called(:highlight)
+	   _else >> l_sc
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method string_styles_holder.int!reflect_system_styles()
+	## 
+	## Setup line/fill/text- styles from window_system data
+	##
+	# Empty caches (do this before setting the textstyles again)
+	.highlight_text_style_table.empty()
+	.highlight_text_style_table.default_value << _unset 
+	.selected_row_style_cache.empty()
+	.no_focus_row_style_cache.empty()
+	.stripe_style_cache.empty()
+	# Fill styles
+	_self.background_fill_style       << fill_style.new(colour.called(:background))
+	_self.button_face_fill_style      << fill_style.new(colour.called(:button_face))
+	# Line styles
+	_self.connection_line_style       << line_style.new(colour.called(:button_shadow), 1, dash_pattern.new_with(1,1))
+	_self.foreground_line_style       << line_style.new(colour.called(:foreground), 1)
+	_self.resize_line_style           << line_style.new(colour.called(:foreground), 1, dash_pattern.new({4,2}))
+	_self.grid_line_style             << line_style.new(colour.called(:button_face), 1)
+	_self.button_shadow_line_style    << line_style.new(colour.called(:button_shadow), 1)
+	_self.button_highlight_line_style << line_style.new(colour.called(:button_highlight), 1)
+	# Textstyles
+	_local l_default_style << text_style.new(colour.called(:foreground), font.new_usage("default"))
+	_self.add_text_style(:default, _self.default_style << l_default_style)
+	# For now, the only fonts used are plain, bold, fancy and fixed, since those are supported PS fonts as well
+	# Otherwise, doc_default and doc_heading would have been useful in some occasions
+	# Add some common style for general use
+	_self.add_text_style(:normal,      :foreground,    _false, font.new_logical("plain", 12))
+	_self.add_text_style(:button_text, :button_text)
+	_self.add_text_style(:strong,      # defined as bold, for now
+	_self.add_text_style(:bold,        :foreground,    _false, font.new_logical("bold",  12)))
+	_self.add_text_style(:inserted,    :green,         _false, font.new_logical("bold",  12))
+	_self.add_text_style(:inserted_m,  :foreground,    _false, font.new_logical("bold",  12))
+	_self.add_text_style(:deleted,     :maroon,        _false, _unset, _false, _true)
+	_self.add_text_style(:deleted_m,   :foreground,    _false, _unset, _false, _true)
+	_self.add_text_style(:emphasis,     # defined as italic, for now
+	_self.add_text_style(:italic,      :foreground,    _false, font.new_logical("fancy", 12)))
+	_self.add_text_style(:error,       :red,           _false, font.new_logical("bold",  12))
+	_self.add_text_style(:disabled,    :button_shadow, _false)
+	# Add some standard HTML styles
+	_self.add_text_style(:hyperlink,   :blue,          _true,  _unset, _true)
+	_self.add_text_style(:used_hyperlink, :purple,     _true,  _unset, _true)
+	_self.add_text_style(:typewriter,  # symnonym for code
+	_self.add_text_style(:code,        :foreground,    _false, font.new_logical("fixed", 12)))
+	_self.add_text_style(:heading_1,   :foreground,    _false, font.new_logical("bold",  24))
+	_self.add_text_style(:heading_2,   :foreground,    _false, font.new_logical("bold",  18))
+	_self.add_text_style(:heading_3,   :foreground,    _false, font.new_logical("bold",  14))
+	_self.add_text_style(:heading_4,   :foreground,    _false, font.new_logical("bold",  12))
+	_self.add_text_style(:heading_5,   :foreground,    _false, font.new_logical("bold",  10))
+	_self.add_text_style(:heading_6,   :foreground,    _false, font.new_logical("bold",   8))
+	# Check if we want
+	_self.int!define_sys_icons()
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method string_styles_holder.int!define_sys_icons()
+	## 
+	## Setup [+] / [-] (expand and compress)
+	## icons, and the [v] / [^] (sort down / up) icons.
+	## Shared variable xp_style_icons?
+	## If this shared constant is _true, and the image system is
+	## win32, then on image startup the  will be defined.
+	# Decache previous images
+	_if (!window_system! _isnt _unset)
+	_then
+		!window_system![:triangle_up] <<
+		!window_system![:triangle_down] << 
+		!window_system![:expandable_icon] << 
+		!window_system![:collapsable_icon] << _unset
+	_endif
+	_if (system.os_name _is :windows) _andif (system.os_revision.as_number().default(0) >= 5.1)
+	_then
+		# Update system icons definitions
+		_local l_cb << colour.called(:button_face)
+		_local l_cg << colour.called(:button_shadow)
+		_local l_ch << colour.new_rgb((l_cb.red + l_cg.red) / 2, (l_cb.green + l_cg.green) / 2, (l_cb.blue + l_cg.blue) / 2)
+		# also undo un-gammacorrection (applied to :button_face and :button_shadow) here
+		l_ch << {:h, l_ch.red, l_ch.green, l_ch.blue}
+		_self.add_image(
+			:triangle_up, # name
+			{l_ch,
+			 {:w, :button_highlight},
+			 {:g, :button_shadow}},
+			16, 16, # width x heigth
+			{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #5
+			  0,  0,  0,  0,  0,  0,  0, :w,  0,  0,  0,  0,  0,  0,  0,  0, #6
+			  0,  0,  0,  0,  0,  0, :g, :h, :w,  0,  0,  0,  0,  0,  0,  0, #7
+			  0,  0,  0,  0,  0, :g, :h, :h, :h, :w,  0,  0,  0,  0,  0,  0, #8
+			  0,  0,  0,  0, :g, :h, :h, :h, :h, :h, :w,  0,  0,  0,  0,  0, #9
+			  0,  0,  0, :g, :h, :h, :h, :h, :h, :h, :h, :w,  0,  0,  0,  0, #10
+			  0,  0, :g, :h, :h, :h, :h, :h, :h, :h, :h, :h, :w,  0,  0,  0, #11
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #12
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #13
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+		_self.add_image(
+			:triangle_down, # name
+			{l_ch,
+			 {:w, :button_highlight},
+			 {:g, :button_shadow}},
+			16, 16, # width x heigth
+			{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #5
+			  0,  0, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w,  0,  0,  0, #6
+			  0,  0,  0, :g, :h, :h, :h, :h, :h, :h, :h, :h,  0,  0,  0,  0, #7
+			  0,  0,  0,  0, :g, :h, :h, :h, :h, :h, :h,  0,  0,  0,  0,  0, #8
+			  0,  0,  0,  0,  0, :g, :h, :h, :h, :h,  0,  0,  0,  0,  0,  0, #9
+			  0,  0,  0,  0,  0,  0, :g, :h, :h,  0,  0,  0,  0,  0,  0,  0, #10
+			  0,  0,  0,  0,  0,  0,  0, :g,  0,  0,  0,  0,  0,  0,  0,  0, #11
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #12
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #13
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+		_self.add_image(
+			:expandable_icon, # name
+			{{:f, :foreground},
+			 {:b, :button_face},
+			 l_ch,
+			 {:w, :background},
+			 {:s, :button_shadow}},
+			16, 16, # width x heigth
+			{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+			  0,  0,  0,  0, :h, :s, :s, :s, :s, :s, :s, :s, :h,  0,  0,  0, #5
+			  0,  0,  0,  0, :s, :w, :w, :w, :w, :w, :w, :w, :s,  0,  0,  0, #6
+			  0,  0,  0,  0, :s, :w, :w, :w, :f, :w, :w, :w, :s,  0,  0,  0, #7
+			  0,  0,  0,  0, :s, :w, :w, :w, :f, :w, :w, :b, :s,  0,  0,  0, #8
+			  0,  0,  0,  0, :s, :w, :f, :f, :f, :f, :f, :b, :s,  0,  0,  0, #9
+			  0,  0,  0,  0, :s, :w, :w, :w, :f, :w, :b, :b, :s,  0,  0,  0, #10
+			  0,  0,  0,  0, :s, :w, :b, :b, :f, :b, :b, :h, :s,  0,  0,  0, #11
+			  0,  0,  0,  0, :s, :b, :h, :h, :h, :h, :h, :h, :s,  0,  0,  0, #12
+			  0,  0,  0,  0, :h, :s, :s, :s, :s, :s, :s, :s, :h,  0,  0,  0, #13
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+		_self.add_image(
+			:collapsable_icon, # name
+			{{:f, :foreground},
+			 {:b, :button_face},
+			 l_ch,
+			 {:w, :background},
+			 {:s, :button_shadow}},
+			16, 16, # width x heigth
+			{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+			  0,  0,  0,  0, :h, :s, :s, :s, :s, :s, :s, :s, :h,  0,  0,  0, #5
+			  0,  0,  0,  0, :s, :w, :w, :w, :w, :w, :w, :w, :s,  0,  0,  0, #6
+			  0,  0,  0,  0, :s, :w, :w, :w, :w, :w, :w, :w, :s,  0,  0,  0, #7
+			  0,  0,  0,  0, :s, :w, :w, :w, :w, :w, :w, :b, :s,  0,  0,  0, #8
+			  0,  0,  0,  0, :s, :w, :f, :f, :f, :f, :f, :b, :s,  0,  0,  0, #9
+			  0,  0,  0,  0, :s, :w, :w, :w, :w, :w, :b, :b, :s,  0,  0,  0, #10
+			  0,  0,  0,  0, :s, :w, :b, :b, :b, :b, :b, :h, :s,  0,  0,  0, #11
+			  0,  0,  0,  0, :s, :b, :h, :h, :h, :h, :h, :h, :s,  0,  0,  0, #12
+			  0,  0,  0,  0, :h, :s, :s, :s, :s, :s, :s, :s, :h,  0,  0,  0, #13
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+	_else 
+		_self.add_image(
+			:triangle_up, # name
+			{{:b, :button_face},
+			 {:w, :button_highlight},
+			 {:g, :button_shadow}},
+			16, 16, # width x heigth
+			{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #5
+			  0,  0,  0,  0,  0,  0,  0, :g, :w,  0,  0,  0,  0,  0,  0,  0, #6
+			  0,  0,  0,  0,  0,  0, :g, :g, :w, :w,  0,  0,  0,  0,  0,  0, #7
+			  0,  0,  0,  0,  0,  0, :g, :b, :b, :w,  0,  0,  0,  0,  0,  0, #8
+			  0,  0,  0,  0,  0, :g, :g, :b, :b, :w, :w,  0,  0,  0,  0,  0, #9
+			  0,  0,  0,  0,  0, :g, :b, :b, :b, :b, :w,  0,  0,  0,  0,  0, #10
+			  0,  0,  0,  0, :g, :g, :b, :b, :b, :b, :w, :w,  0,  0,  0,  0, #11
+			  0,  0,  0,  0, :w, :w, :w, :w, :w, :w, :w, :w,  0,  0,  0,  0, #12
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #13
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+		_self.add_image(
+			:triangle_down, # name
+			{{:b, :button_face},
+			 {:w, :button_highlight},
+			 {:g, :button_shadow}},
+			16, 16, # width x heigth
+			{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+			  0,  0,  0,  0, :g, :g, :g, :g, :g, :g, :g, :g,  0,  0,  0,  0, #5
+			  0,  0,  0,  0, :g, :g, :b, :b, :b, :b, :w, :w,  0,  0,  0,  0, #6
+			  0,  0,  0,  0,  0, :g, :b, :b, :b, :b, :w,  0,  0,  0,  0,  0, #7
+			  0,  0,  0,  0,  0, :g, :g, :b, :b, :w, :w,  0,  0,  0,  0,  0, #8
+			  0,  0,  0,  0,  0,  0, :g, :b, :b, :w,  0,  0,  0,  0,  0,  0, #9
+			  0,  0,  0,  0,  0,  0, :g, :g, :w, :w,  0,  0,  0,  0,  0,  0, #10
+			  0,  0,  0,  0,  0,  0,  0, :g, :w,  0,  0,  0,  0,  0,  0,  0, #11
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #12
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #13
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+		_self.add_image(
+			:expandable_icon, # name
+			{{:b, :foreground},
+			 {:w, :background},
+			 {:g, :button_shadow}},
+			16, 16, # width x heigth
+			{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+			  0,  0,  0,  0, :g, :g, :g, :g, :g, :g, :g, :g, :g,  0,  0,  0, #5
+			  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #6
+			  0,  0,  0,  0, :g, :w, :w, :w, :b, :w, :w, :w, :g,  0,  0,  0, #7
+			  0,  0,  0,  0, :g, :w, :w, :w, :b, :w, :w, :w, :g,  0,  0,  0, #8
+			  0,  0,  0,  0, :g, :w, :b, :b, :b, :b, :b, :w, :g,  0,  0,  0, #9
+			  0,  0,  0,  0, :g, :w, :w, :w, :b, :w, :w, :w, :g,  0,  0,  0, #10
+			  0,  0,  0,  0, :g, :w, :w, :w, :b, :w, :w, :w, :g,  0,  0,  0, #11
+			  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #12
+			  0,  0,  0,  0, :g, :g, :g, :g, :g, :g, :g, :g, :g,  0,  0,  0, #13
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+		_self.add_image(
+			:collapsable_icon, # name
+			{{:b, :foreground},
+			 {:w, :background},
+			 {:g, :button_shadow}},
+			16, 16, # width x heigth
+			{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+			  0,  0,  0,  0, :g, :g, :g, :g, :g, :g, :g, :g, :g,  0,  0,  0, #5
+			  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #6
+			  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #7
+			  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #8
+			  0,  0,  0,  0, :g, :w, :b, :b, :b, :b, :b, :w, :g,  0,  0,  0, #9
+			  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #10
+			  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #11
+			  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #12
+			  0,  0,  0,  0, :g, :g, :g, :g, :g, :g, :g, :g, :g,  0,  0,  0, #13
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+			  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method string_styles_holder.get_comparison(p_str, p_heading_id)
+	## Parameters    : P_STR: Contains the start of an compare operator;
+	##                    i.e. a >, <, = or ~. The comparison operator
+	##                    may also consist of 2 characters,
+	##                    i.e. a <=, >=,  <> or ~=; the operator is
+	##                    followed by a value to which we compare.
+	##                 P_HEADING_ID: ID of the column to which this
+	##                    comparison will be applied.
+	## Returns       : 1) Operator found, either :|<=|, :|>=|,
+	##                    :|<|, :|>|, :|=| or :|~=|
+	##                 2) Value that we will compare to.
+	##                 3) _true if (2) has been converted;
+	##                    _false if (2) is still a string.
+	## Function      : Split the operator (1) from the value (2) by
+	##                 checking P_STR.
+	##                 If we have unit formatter for P_HEADING_ID,
+	##                 we'll try to convert (2) into that unit.
+	## Conditions    : This method may raise a condition when P_STR
+	##                 does not contain a valid comparison, or it
+	##                 contains a string that cannot be converted to the unit 
+	##                 as used by the formatter for P_HEADING_ID.
+	## Note          : It is assume that the method is_comparison?
+	##                 has been called and returned _true.
+	_local l_converted? << _false 
+	_if (p_str.size < 2)
+	_then
+		condition.raise(:filter_value_only_operator, :operator, p_str.subseq(1, 1))
+	_endif
+	_if ((l_op << :|<=|) = (l_first << p_str.subseq(1, 2))) _orif
+	    ((l_op << :|>=|) = l_first) _orif
+	    (("<>" = l_first) _or ((l_op << :|~=|) = l_first))
+	_then
+		_if (p_str.size < 3)
+		_then
+			condition.raise(:filter_value_only_operator, :operator, l_op)
+		_endif
+		p_str << p_str.subseq(3)
+	_elif ((l_op << :|<|) = (l_first << p_str.subseq(1, 1))) _orif
+	      ((l_op << :|>|) = l_first) _orif 
+	      ((l_op << :|=|) = l_first)
+	_then 
+		p_str << p_str.subseq(2)
+	_elif ("~" = l_first)
+	_then
+		l_op << :|~=|
+		p_str << p_str.subseq(2)
+	_else
+		l_op << :|~=|
+		# bad API use, this is no comparison;
+		# if .is_comparison?() has been used we cannot go here.
+	_endif
+	# check if we have a unit-formatter for this heading
+	_local l_formatter << _self.formatter(p_heading_id)
+	_if l_formatter.responds_to?(:unit) _andif ((l_unit << l_formatter.unit) _isnt _unset)
+	_then
+		_handling error _with _proc @raise_error_as_user_error(p_condition)
+					      condition.raise(:user_error, :string, p_condition.report_contents_string)
+		_endproc
+		_return (l_op, l_unit.unit_value_class.new_from_string(p_str, l_unit), _true)
+	_endif
+	>> (l_op, p_str, _false)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method string_styles_holder.is_comparison?(p_str)
+	## Returns _true if P_STR is the start of an compare operator;
+	## i.e. a >, <, = or ~. The comparison operator may also
+	## consist of 2 characters, i.e. a <=, >=,  <> or ~=;
+	## otherwise _false is returned.
+	_local l_first_el << p_str.an_element()
+	>> "<>~=".includes?(l_first_el)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.truncate_text(p_text, p_text_style, p_desired_width)
+	## Parameters    : P_TEXT: Text that has to be shortened
+	##                 P_TEXT_STYLE: Style used to determine length
+	##                 P_DESIRED_WIDTH
+	## Returns       : A piece of text that is truncated and
+	##                 has the style_holder.ellipses_message added.
+	## Function      : Shorten P_TEXT that it fits in P_DESIRED_WIDTH.
+	# may be this could be sped up by halving string, however, that
+	# would be a more complex algorithm
+	_local _constant c_trunc << _self.ellipses_message
+	_local l_font << p_text_style.font
+	# correct for the width of the ellipses
+	_local l_desired_width << p_desired_width - l_font.string_width(c_trunc)
+	_local l_result << ""
+	_for i_char _over p_text.fast_elements()
+	_loop
+		# check one more character
+		_if l_font.string_width(l_part << l_result + i_char) > l_desired_width
+		_then
+			# we always want at least the first character
+			_if l_result.empty? _then l_result << l_part _endif
+			_leave 
+		_endif
+		l_result << l_part
+	_endloop
+	l_result +<< c_trunc
+	>> (l_result, l_font.string_width(l_result))
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method string_styles_holder.default_row_height
+	## Parameters    : 
+	## Returns       : Height including margins needed for a row
+	##                 where a styled string is displayed using the default style.
+	## Function      : Computes the above from the default_font's
+	##                 cell height, adds margin (.cell_spacing_h),
+	##                 rounds up to even, and caches it.
+	# Rounding up to even is done cos of connect-lines for trees:
+	# They are normally dotted, and it looks stupid if this is not
+	# done regularly.
+	_local l_row_height << _self.default_line_height + (2 * _self.cell_spacing_h)
+	# used to be: _if system.window_system _is :win32 _then >> 4 _else >> 5 _endif
+	_if l_row_height.odd?
+	_then
+		l_row_height +<< 1
+	_endif
+	>> l_row_height
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method string_styles_holder.default_line_height
+	## Parameters    : 
+	## Returns       : Height of a line of text when 
+	##                 displayed using the default style.
+	## Function      : Computes the above from the default_font's
+	##                 cell height
+	>> _self.default_font.cell_height
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.no_focus_colour
+	## Colour to be used by selections that have no focus.
+	## If not set, colour.called(:button_face) will be used.
+	>> _if ((l_sc << .no_focus_colour) _is _unset)
+	   _then >> colour.called(:button_face)
+	   _else >> l_sc
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.no_focus_row_style(p_height)
+	## Parameters    : P_HEIGHT: In pixels
+	## Returns       : Line_style to be used for denoting a selection, of
+	##                    height P_HEIGHT and colour .no_focus_colour
+	## Function      :
+	# check input
+	_if (p_height _is _unset)
+	_then
+		p_height << _self.row_height
+	_endif
+	# check the cache, fill it when necessary
+	_if ((l_no_focus_row_style << .no_focus_row_style_cache[p_height]) _is _unset)
+	_then
+		l_no_focus_row_style << .no_focus_row_style_cache[p_height] <<
+			line_style.new(_self.no_focus_colour, p_height)
+	_endif
+	>> l_no_focus_row_style
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method string_styles_holder.no_focus_colour << p_new
+	## Parameters    : P_NEW: A colour
+	## Returns       : P_NEW
+	## Function      : Decaches currently used no_focus selection line
+	##                 styles, and sets the new colour to be used
+	##                 for depicting a selection that has no focus.
+	.no_focus_row_style_cache << property_list.new()
+	>> .no_focus_colour << p_new
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method string_styles_holder.int!init_standard_class_formatters()
+		    
+	string_styles_holder.add_class_formatter(:default, write_string)
+	string_styles_holder.add_class_formatter(:float, float_format.new())
+	string_styles_holder.add_class_formatter(:rational, rational_format.new())
+	string_styles_holder.add_class_formatter(:integer, number_format.new())
+	string_styles_holder.add_class_formatter(:bignum, write_string)
+	string_styles_holder.add_class_formatter(:date,
+		date_time_value_manager.new_with_properties(:environ, !date_time_environ!, :time?, _false))
+	string_styles_holder.add_class_formatter(:date_time,
+		date_time_value_manager.new_with_properties(:environ, !date_time_environ!, :time?, _true))
+
+	string_styles_holder.add_class_formatter(:true,  in_place_boolean_editor)
+	string_styles_holder.add_class_formatter(:maybe, in_place_boolean_editor)
+	string_styles_holder.add_class_formatter(:false, in_place_boolean_editor)
+_endmethod
+$
+
+message_handler.add_dependent(string_styles_holder, :initialised_language)
+$

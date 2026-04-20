@@ -1,0 +1,1278 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=basic, topic={tree_item}, usage={subclassable})
+## Renders self's styled_string on self's canvas, using self's
+## value_holder when values in the styled string need resolving.
+##
+## Contains a string_style_holder for retrieving
+## display/drawing styles for the thing (text, image, etc.)
+## that is rendered.
+##
+## Computes the position (aligned, lined up, etc.) where things
+## will be rendered; and can find the thing that has been
+## rendered at a certain position (e.g. when a user has clicked somewhere)
+##
+## The following 'properties' need to be set for proper functioning:
+##  * canvas: The drawing surface
+##  * styled_string: The styled string containing texts,
+##    images, etc. that need to be drawn
+##  * value_holder: Use to get values from when referenced from
+##    the styled string
+##  * row_height: Height used when drawing :styled_string
+## Supports the following properties:
+##  * headings_holder: automatically created when not
+##    specified, contains information about headings (rows and
+##    column), their alignments, dimensions, etc.
+##  * style_holder: automatically created when not specified,
+##    contains drawing / display styles
+##  * v_alignment: vertical allignment within cells, :top
+##    (:default), :centre and :bottom
+##  * grid_lines?: if _true (default is _false), a grid is
+##    drawn between cells
+##  * stripes?: if _true (default is _false), alternating bars
+##    are drawn before the actual content, thus making it easier
+##    for a user to see what's on the same line
+##  * allow_multi_line?: if _true (default is _false), the
+##    styled string is checked on :new_line keyword to find out
+##    the number of lines before drawing
+def_slotted_exemplar(:styled_string_renderer,
+{
+	{:canvas, _unset},
+	{:styled_string, _unset},
+	{:row_height, 18},
+	{:half_row_height, 9},
+	{:line_height, 18},
+	{:half_line_height, 9},
+	{:value_holder, _unset},
+	{:headings_holder, _unset},
+	{:style_holder, _unset},
+	{:grid_lines?, _false},
+	{:stripes?, _false},
+	{:allow_multi_line?, _false},
+	{:number_of_lines, 1},
+	{:row_headings_depressed_on_selection?, _true}, # ToDo
+	{:unselectable_cols_depressed_on_selection?, _false}, # ToDo
+	{:v_alignment, :top} # :centre, :bottom
+})
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## The drawing surface
+styled_string_renderer.define_slot_access(:canvas, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## The styled string containing texts,
+## images, etc. that need to be drawn
+styled_string_renderer.define_slot_access(:styled_string, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Height used when drawing :styled_string
+styled_string_renderer.define_slot_access(:row_height, :readable)
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+## Cached half of rwo height used when drawing :styled_string
+styled_string_renderer.define_slot_access(:half_row_height, :readable)
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+## Line height used for each line of :styled_string
+styled_string_renderer.define_slot_access(:line_height, :readable)
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+## Cached half of line height used for each line of :styled_string
+styled_string_renderer.define_slot_access(:half_line_height, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Use to get values from when referenced from
+## the styled string
+styled_string_renderer.define_slot_access(:value_holder, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## automatically created when not
+## specified, contains information about headings (rows and
+## column), their alignments, dimensions, etc.
+styled_string_renderer.define_slot_access(:headings_holder, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## automatically created when not specified,
+## contains drawing / display styles
+styled_string_renderer.define_slot_access(:style_holder, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## if _true (default is _false), alternating bars
+## are drawn before the actual content, thus making it easier
+## for a user to see what's on the same line
+styled_string_renderer.define_slot_access(:stripes?, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## if _true (default is _false), a grid is
+## drawn between cells
+styled_string_renderer.define_slot_access(:grid_lines?, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## if _true (default is _false), the
+## styled string is checked on :new_line keyword to find out
+## the number of lines before drawing
+styled_string_renderer.define_slot_access(:allow_multi_line?, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## vertical allignment within cells, :top
+## (:default), :centre and :bottom
+styled_string_renderer.define_slot_access(:v_alignment, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## List of property (names) that can be set by the api-user
+styled_string_renderer.define_shared_constant(:exported_properties,
+	set.new_with(:headings_holder, :style_holder, :v_alignment, :grid_lines?, :stripes?, :allow_multi_line?), :public)
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={external})
+## Whether or not buttons will be drawn, defaults to _true
+styled_string_renderer.define_shared_constant(:row_heading_buttons?, _true, :public)
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+## Default value for allow_multi_line?
+styled_string_renderer.define_shared_constant(:default_allow_multi_line?,
+					      _false, :private)
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={subclassable})
+_method styled_string_renderer.new(p_properties)
+	## Parameters    : P_PROPERTIES: Property_list with
+	##                    key values that are understood by self.
+	## Returns       : A new initialise instance of _self.
+	## Function      : Create ^^^.
+	## 
+	## Renders self's styled_string on self's canvas, using self's
+	## value_holder when values in the styled string need resolving.
+	##
+	## Contains a string_style_holder for retrieving
+	## display/drawing styles for the thing (text, image, etc.)
+	## that is rendered.
+	##
+	## Computes the position (aligned, lined up, etc.) where things
+	## will be rendered; and can find the thing that has been
+	## rendered at a certain position (e.g. when a user has clicked somewhere)
+	##
+	## The following 'properties' need to be set for proper functioning:
+	##  * canvas: The drawing surface
+	##  * styled_string: The styled string containing texts,
+	##    images, etc. that need to be drawn
+	##  * value_holder: Use to get values from when referenced from
+	##    the styled string
+	##  * row_height: Height used when drawing :styled_string
+	## Supports the following properties:
+	##  * headings_holder: automatically created when not
+	##    specified, contains information about headings (rows and
+	##    column), their alignments, dimensions, etc.
+	##  * style_holder: automatically created when not specified,
+	##    contains drawing / display styles
+	##  * v_alignment: vertical allignment within cells, :top
+	##    (:default), :centre and :bottom
+	##  * grid_lines?: if _true (default is _false), a grid is
+	##    drawn between cells
+	##  * stripes?: if _true (default is _false), alternating bars
+	##    are drawn before the actual content, thus making it easier
+	##    for a user to see what's on the same line
+	##  * allow_multi_line?: if _true (default is _false), the
+	##    styled string is checked on :new_line keyword to find out
+	##    the number of lines before drawing
+	>> _clone.init(p_properties)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={subclassable})
+_method styled_string_renderer.new_from(p_another)
+	## Parameters    : P_ANOTHER: Another styled_string_renderer or subclass.
+	## Returns       : New initialised instance of _self.
+	## Function      : Copies the following properties from P_ANOTHER:
+	##                  * :canvas
+	##                  * :styled_string
+	##                  * :style_holder
+	##                  * :value_holder
+	##                  * :headings_holder
+	>> _clone.init(property_list.new_with(
+			       :canvas, p_another.canvas,
+			       :styled_string, p_another.styled_string,
+			       :style_holder, p_another.style_holder,
+			       :value_holder, p_another.value_holder,
+			       :headings_holder, p_another.headings_holder))
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_private _method styled_string_renderer.init(p_properties)
+	## Parameters    : P_PROPERTIES: See new method.
+	## Returns       : An initialised _self
+	## Function      : 
+	p_properties[:renderer] << _self 
+	.grid_lines? << p_properties[:grid_lines?].default(_false)
+	.stripes? << p_properties[:stripes?].default(_false)
+	.allow_multi_line? << p_properties[:allow_multi_line?].default(_self.default_allow_multi_line?)
+	.v_alignment << p_properties[:v_alignment].default(:top)
+	_self.canvas << p_properties[:canvas]
+	_self.style_holder << _if ((p_styles_holder << p_properties[:style_holder]) _isnt _unset)
+			      _then >> p_styles_holder
+			      _else >> string_styles_holder.new_from(_unset, p_properties)
+			      _endif
+	_self.value_holder << p_properties[:value_holder]
+	_self.headings_holder << _if ((p_headings_holder << p_properties[:headings_holder]) _isnt _unset)
+				 _then >> p_headings_holder
+				 _else >> tree_headings_holder.new(p_properties)
+				 _endif
+	_self.row_height << .style_holder.row_height
+	_self.styled_string << p_properties[:styled_string]
+	>> _self
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method styled_string_renderer.styled_string << p_new
+	## Parameters    : P_NEW: A styled string
+	## Returns       : P_NEW
+	## Function      : Set a new styled string to be drawn, and
+	##                 compute the number of lines it has got.
+	.styled_string << p_new
+	_self.int!set_number_of_lines()
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method styled_string_renderer.row_height << p_new
+	## Parameters    : P_NEW: Height used when drawing :styled_string
+	## Returns       : P_NEW
+	## Function      : 
+	.row_height << p_new
+	.half_row_height << l_half << (p_new _div 2)
+	_self.int!set_number_of_lines()
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method styled_string_renderer.allow_multi_line? << p_new
+	## Parameters    : P_NEW: if _true (default is _false), the
+	##                    styled string is checked on :new_line keyword to find out
+	##                    the number of lines before drawing
+	## Returns       : P_NEW
+	## Function      : 
+	.allow_multi_line? << p_new
+	_self.int!set_number_of_lines()
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method styled_string_renderer.int!set_number_of_lines()
+	## Parameters    : -
+	## Returns       : -
+	## Function      : If necessary compute the .number of lines
+	##                 and the line_height chaches.
+	_if .allow_multi_line? _andif ((l_styled_string << _self.styled_string) _isnt _unset)
+	_then
+		.number_of_lines << l_number_of_lines << l_styled_string.number_of_lines.max(1)
+	_else 
+		.number_of_lines << 1
+	_endif
+	.half_line_height << (.line_height << _self.style_holder.default_line_height) _div 2
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_string_renderer.selected_row_style
+	## Parameters    : -
+	## Returns       : Line style used for displaying selected rows
+	## Function      : 
+	>> _if _self.canvas.draw_focus?
+	   _then >> _self.style_holder.selected_row_style(_self.row_height)
+	   _else >> _self.style_holder.no_focus_row_style(_self.row_height)
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_string_renderer.selected_line_style
+	## Parameters    : 
+	## Returns       : Line style used for displaying selected
+	##                 lines (which may be less wide than
+	##                 .selected_row_style since we can have
+	##                 several lines per row)
+	## Function      : 
+	>> _self.style_holder.selected_row_style(_self.line_height)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_string_renderer.render_panel(p_x, p_y, p_width, p_height, _optional p_bevel, p_no_fill?)
+	## Parameters    : P_X, P_Y: Position where to drawn
+	##                 P_WIDTH, P_HEIGHT: Dimensions to be used
+	##                 [P_BEVEL]: -1 (sunken), 0 (flat) or 1 (raised, default)
+	##                 [P_NO_FILL?]: If _true (default is _false)
+	##                    only the bevelled border is drawn. 
+	## Returns       : -
+	## Function      : Draw a simple panel that looks like a button
+	##                 suitable and is for a heading.
+	l_canvas << _self.canvas
+	p_width << 0.max(p_width - 1)
+	p_height << 0.max(p_height - 1)
+	_local l_styles_holder << _self.style_holder
+	# draw the button
+	_local l_outline << short_integer_vector.new_with(0,       0,
+							  p_width, 0,
+							  p_width, p_height,
+							  0,       p_height,
+							  0,       0)
+	_if (p_no_fill? _isnt _true)
+	_then
+		l_canvas.fill_rline(l_styles_holder.button_face_fill_style, p_x, p_y, l_outline)
+	_endif
+	_if (p_bevel _is 0)
+	_then
+		l_canvas.draw_rline(l_styles_holder.foreground_line_style, p_x,  p_y, l_outline)
+	_else 
+		_local l_bottom_right_line << short_integer_vector.new_with(0,       p_height,
+									    p_width, p_height,
+									    p_width, 0)
+		_local l_top_left_line << short_integer_vector.new_with(0,       p_height,
+									0,       0,
+									p_width, 0)
+		_local l_shadow_line_style << l_styles_holder.button_shadow_line_style
+		_local l_highlight_line_style << l_styles_holder.button_highlight_line_style
+		_if (p_bevel _isnt _unset) _andif (p_bevel < 0)
+		_then
+			(l_shadow_line_style, l_highlight_line_style) << (l_highlight_line_style, l_shadow_line_style)
+		_endif 
+		l_canvas.draw_rline(l_shadow_line_style, p_x,  p_y, l_bottom_right_line)
+		l_canvas.draw_rline(l_highlight_line_style, p_x,  p_y, l_top_left_line)
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_string_renderer.value(_optional p_index)
+	## Parameters    : [P_INDEX]: Index specifying what value we want
+	##                    to retrieve, possibly _unset
+	## Returns       : Value stored in the value_holder,
+	##                 if P_INDEX it will be retrieved with []
+	## Function      : 
+	>> _if (p_index _isnt _unset) # _andif _self.value_holder.responds_to?(:|[]|)
+	   _then >> _self.value_holder[p_index]
+	   _else >> _self.value_holder
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_method styled_string_renderer.left_offset(_optional p_column_index)
+	## Parameters    : [P_COLUMN_INDEX]: Optional, the index of the
+	##                    column for which we want to know the offset
+	## Returns       : Inner cell offset, for the left side
+	## Function      : 
+	>> _self.style_holder.cell_spacing_w
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_method styled_string_renderer.right_offset(_optional p_column_index)
+	## Parameters    : [P_COLUMN_INDEX]: Optional, the index of the
+	##                    column for which we want to know the offset
+	## Returns       : Inner cell offset, for the right side
+	## Function      : 
+	>> _self.style_holder.cell_spacing_w
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_method styled_string_renderer.offset(_optional p_column_index)
+	## Parameters    : [P_COLUMN_INDEX]: Optional, the index of the
+	##                    column for which we want to know the offset
+	## Returns       : Sum of left_offset and right_offset, the
+	##                 extra width we will need in this cell apart from its contents.
+	## Function      : 
+	>> _self.left_offset(p_column_index) + _self.right_offset(p_column_index)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method styled_string_renderer.is_column_selected?(p_column_index, _optional p_selection)
+	## Parameters    : P_COLUMN_INDEX: Optional, the index of the
+	##                    column for which we want to know the offset
+	##                 [P_SELECTION]: Valid selection for the
+	##                    .value_holder, e.g. _false, _true, an integer or a
+	##                    simple_vector with column indices.
+	## Returns       : Sum of left_offset and right_offset, the
+	##                 extra width we will need in this cell apart from its contents.
+	## Function      : 
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_method styled_string_renderer.render_row_heading(p_x, p_y, p_index)
+	## Parameters    : P_X: The x-coordinate *from which* we need
+	##                    to start rendering. If P_X > the width of
+	##                    the row_heading, nothing is rendered.
+	##                 P_Y: The y-coordinate *at which* the row
+	##                    heading needs to be rendered.
+	##                 P_INDEX: The index we are in the list of all
+	##                    things rendered, this will be used as a default text.
+	## Returns       : _true if something got rendered, _false otherwise.
+	## Function      : Renders the row-heading at (0, P_Y)
+	_local l_headings_holder << _self.headings_holder
+	_local l_row_height << _self.row_height
+	_if ((l_width << l_headings_holder.row_headings_width) <= p_x) _then _return _false _endif
+	_local l_bevel << _if _self.is_column_selected?(0) _then >> -1 _else >> 1 _endif
+	_local (l_text, l_style) << l_headings_holder.row_heading(p_index, .value_holder)
+	_if (l_style _is :image)
+	_then
+		l_image << l_text ^<< _unset
+	_else
+		_if _not l_text.is_class_of?(simple_vector)
+		_then
+			l_text << _self.style_holder.format(l_text)
+		_endif
+		_if (l_style _isnt _unset)
+		_then
+			l_style << _self.style_holder.text_style(l_style)
+		_endif
+	_endif
+	_local l_align << l_headings_holder.row_headings_alignment
+	_if _self.row_heading_buttons?
+	_then
+		_self.render_button(0, p_y, l_width, l_row_height, l_bevel, l_text, l_align, l_style)
+	_else
+		_if _self.grid_lines?
+		_then
+			# draw vertical gridlines
+			_self.draw_segment(_self.style_holder.grid_line_style, l_width, p_y, l_width, p_y + l_row_height - 1)
+		_endif
+		_if (l_text _isnt _unset)
+		_then
+			_self.render_text(0, p_y, l_width, l_row_height, l_text, l_align, l_style)
+		_endif
+	_endif
+	_if (l_image _isnt _unset)
+	_then
+		_self.render_image(0, p_y, l_width, l_row_height, l_image, l_align)
+	_endif
+	>> _true 
+_endmethod
+$
+
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_iter _method styled_string_renderer.texts_and_text_styles()
+	## Parameters    : 
+	## Returns       : Iterations of
+	##                 1) text: A piece of text to be drawn (might
+	##                    also be an image, or a tab or a newline,
+	##                    or a custom_draw_renderer)
+	##                 2) text_style: Used for drawing (is
+	##                    :resolved_image for an image, or
+	##                    :custom_draw, :align, :merge, :move)
+	##                 3) extra info, one of {:image, :toggle,
+	##                    :radio_toggle, :value, :text or :custom_draw)
+	##                 4) width: width of the things just drawed
+	##                 5) extra info, ...
+	## Function      : Resolve images and compute widths
+	l_styles_holder << _self.style_holder
+	_local l_last_ts, l_skip_till_next_tab? << _false 
+	_for i_text, i_style_name _over _self.styled_string.fast_elements_in_pairs()
+	_loop
+	    l_skip_till_next_tab? << (
+		_if (i_text _is tab_char) 
+		_then
+			# we are entering a new column
+			>> _loopbody (i_text, i_style_name, :tab, 0, 0)
+		_elif (i_style_name _is :merge) 
+		_then
+			# layout data; makes sure that if even we
+			# l_skip_till_next_tab?, we still do handle :merged cells.
+			# Since this goes over more than 'tabs,' we do need to process
+			# this even if we skip to a new tab.
+			>> _loopbody ("", l_last_ts, i_style_name, 0, 0, i_text)
+		_elif l_skip_till_next_tab?
+		_then
+			# do nothing, wait till we encounter a tab character
+			>> _true 
+		_elif (i_text _is newline_char) 
+		_then
+			# we are entering a new column
+			>> _loopbody (i_text, i_style_name, :newline, 0, 0)
+		_elif (i_style_name _is :align) 
+		_then
+			# layout data
+			>> _loopbody ("", l_last_ts, i_style_name, 0, 0, i_text)
+		_elif (i_style_name _is :move) 
+		_then
+			# layout data
+			_local (l_width, l_height) << (_scatter i_text)
+			>> _loopbody ("", l_last_ts, i_style_name, l_width, l_height, i_text)
+		_elif (i_style_name _is :image)
+		_then
+			# this succeeds always, by using default/corrupt image
+			_local l_image_name << l_styles_holder.resolve_image(i_text, _self.value_holder)
+			_local (l_width, l_height) << l_styles_holder.image_width_and_height(l_image_name)
+			>> _loopbody (l_image_name, :resolved_image, :image, l_width, l_height, i_text)
+		_elif (i_style_name _is :toggle) _orif (i_style_name _is :radio_toggle)
+		_then
+			_local l_image_name << l_styles_holder.resolve_value(_self.value(i_text), i_style_name, i_text)
+			_local (l_width, l_height) << l_styles_holder.image_width_and_height(l_image_name)
+			>> _loopbody (l_image_name, :resolved_image, i_style_name, l_width, l_height, i_text)
+		_elif (i_style_name _is :value)
+		_then
+			_local (l_text, l_type) << _self.value(i_text)
+			_if (l_type _isnt :image)
+			_then
+				(l_text, l_new_type) << l_styles_holder.format(l_text, i_text, .value_holder)
+				l_type << l_new_type.default(l_type)
+			_endif 
+			>> _if (l_type _is :image)
+			   _then
+				   _local l_image_name << l_styles_holder.resolve_image(l_text, _self.value_holder)
+				   _local (l_width, l_height) << l_styles_holder.image_width_and_height(l_image_name)
+				   >> _loopbody (l_image_name, :resolved_image, :value, l_width, l_height, i_text)
+			   _else
+				   _if (l_type _isnt _unset)
+				   _then
+					   # l_type refers to text style
+					   l_last_ts << l_styles_holder.text_style(l_type)
+				   _elif (l_last_ts _is _unset)
+				   _then
+					   l_last_ts << l_styles_holder.default_style
+				   _endif
+				   _local (l_width, l_height) << l_styles_holder.text_width_and_height(l_text, l_last_ts)
+				   >> _loopbody (l_text, l_last_ts, :value, l_width, l_height, i_text)
+			   _endif
+		_elif (i_style_name _is :custom_draw)
+		_then
+			_local l_renderer << i_text
+			_if ((l_last_ts) _is _unset) _then l_last_ts << l_styles_holder.default_style _endif
+			_local l_font << l_last_ts.font
+			>> _loopbody (l_renderer, l_last_ts, :custom_draw, l_renderer.width, l_renderer.height)
+		_else
+			# just a normal piece of text
+			l_last_ts << l_styles_holder.text_style(i_style_name)
+			_local (l_width, l_height) << l_styles_holder.text_width_and_height(i_text, l_last_ts)
+			>> _loopbody (i_text, l_last_ts, :text, l_width, l_height)
+		_endif _is _true)
+	_endloop 
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_iter _method styled_string_renderer.optimal_column_widths()
+	## Parameters    : -
+	## Returns       : Iterations of:
+	##                 1) Optimal width occupied for current
+	##                    .value_holder and column identified with (2).
+	##                 2) Column_id (or tab_nr)
+	## Function      : Compute optimal width for each column, which
+	##                 is the maximum width of all lines for
+	##                 current .value_holder + the extra cell spacing.
+	##                 (The latter may includes space needed to draw
+	##                 connect lines, etc.)
+	_local l_width << 0, l_prev_line_max << 0, l_tab_nr << 1
+	_for i_text, i_text_style, i_type, i_width _over _self.texts_and_text_styles() 
+	_loop
+		_if (i_type _is :tab) # (i_text _is tab_char)
+		_then
+			_loopbody ((l_prev_line_max ^<< 0).max(l_width ^<< 0) + _self.offset(l_tab_nr), l_tab_nr +^<< 1)
+		_elif (i_type _is :newline) # (i_text _is newline_char)
+		_then
+			l_prev_line_max << l_prev_line_max.max(l_width ^<< 0)
+		_else
+			l_width +<< i_width
+		_endif
+	_finally
+		_loopbody (l_prev_line_max.max(l_width) + _self.offset(l_tab_nr), l_tab_nr)
+	_endloop 
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_string_renderer.optimal_column_width(p_column_nr)
+	## Parameters    : P_COLUMN_NR: Integer denoting a column
+	## Returns       : Optimal width occupied for current
+	##                 .value_holder and column identified with P_COLUMN_NR.
+	## Function      : Compute the optimal width for column P_COLUMN_NR;
+	##                 this is the maximum width of all lines for
+	##                 current .value_holder + the extra cell spacing.
+	##                 (The latter may includes space needed to draw
+	##                 connect lines, etc.)
+	_local l_width << 0, l_prev_line_max << 0, l_tab_count << 1
+	_for i_text, i_text_style, i_type, i_width _over _self.texts_and_text_styles() 
+	_loop
+		_if (i_type _is :tab) # (i_text _is tab_char)
+		_then
+			# check if we are done
+			_if ((l_tab_count +<< 1) > p_column_nr)
+			_then
+				_leave
+			_endif 
+			# check if this will be the right one
+			_if (l_tab_count = p_column_nr)
+			_then
+				l_prev_line_max << l_width << 0
+			_else 
+				# skip all till we are in the right column
+				_continue _with _true 
+			_endif
+		_elif (i_type _is :newline) # (i_text _is newline_char)
+		_then
+			l_prev_line_max << l_prev_line_max.max(l_width ^<< 0)
+		_elif (l_tab_count < p_column_nr)
+		_then 
+			# skip all till we are in the right column
+			_continue _with _true 
+		_else
+			l_width +<< i_width
+		_endif
+	_endloop
+	>> l_prev_line_max.max(l_width) + _self.offset(p_column_nr)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_iter _method styled_string_renderer.positioned_texts_and_text_styles(p_x, p_y)
+	## Parameters    : P_X: Position starting from which we want
+	##                    data. This is ignored for the moment but
+	##                    might be used to improve with lateron.
+	##                 P_Y: Vertical start position.
+	## Returns       : Iterations for tabs (1), and for cell data (2):
+	##                 1) x, y, tab_char,       :tab,            tab_count,      width, height, selectable?
+	##                 2) x, y, text,           text_style,      <type>,         width, height, <type_arg>
+	##                 3) x, y, image,          :resolved_image, <image_source>, width, height, <type_arg>
+	##                 4) x, y, cust_draw_rend, text_style,      :custom_draw,   width, height, <type_arg>
+	##                 In this, <type> can be :text, or :value
+	##                 In this, <image_source> can be :image, :value, :toggle or :radio_toggle
+	##                 In this, <type_arg> is index after :image/:value/:toggle/:radio_toggle
+	##                 in the original styled string.
+	## Function      : Returns iterantions of positioned data that
+	##                 should be drawn. Basically, these can be
+	##                 texts, images, or custom_draw_renderers. 
+	##                 Before any column data is returned, always a
+	##                 :tab iteration is given width the
+	##                 appropriate index (also for the first column). When a
+	##                 new line starts, the same is done (but the index is not increased).
+	_local l_row_height << _self.row_height, l_line_height << .line_height, l_tab_count << 1, l_xpos, l_skip? << _false, l_self << _self  
+	_local l_xmin, l_xmax, l_visible?, l_h_alignment, l_selectable?, l_stack_align?, l_v_alignment << .v_alignment
+	_local l_headings_holder << _self.headings_holder, l_aligns << rope.new()
+	_local l_csh << _self.style_holder.cell_spacing_h # refers to constants in row_height function
+	_local l_no_document_style? << _not _self.style_holder.document_style? # may be tabular style
+	# note that the line height is the height of the font, while
+	# the rowheight is the height of the entire row (may be several lines).
+	_local l_spare_height_start << l_row_height - l_line_height, l_spare_height
+	# the rowheight should be decreased with one pixels, otherwise we might draw one pixel on the next line
+	l_row_height -<< 1 # _self.style_holder.cell_spacing_h
+	_local l_y, l_y_start << p_y
+	_local l_setup_tab_helper <<
+		_proc @align_in_helper (p_tab_count)
+			_import l_xpos, l_xmin, l_xmax, l_visible?, l_h_alignment, l_selectable?, l_headings_holder, l_stack_align?, l_self,
+			        l_spare_height, l_spare_height_start, l_v_alignment, l_y_start, l_row_height
+			# set column data
+			(l_xmin, l_xmax, l_visible?, l_h_alignment, l_selectable?) << l_headings_holder.tab_info(p_tab_count)
+			# override max when we're dealing with a single, simple column
+#			_if _not l_headings_holder.column_headings? _then l_xmax << l_xmax.max(l_self.canvas.width) _endif
+			_local l_left_x << l_xmin
+			l_width << l_xmax - l_xmin
+			l_v_alignment << l_self.v_alignment
+			l_xmax -<< l_self.right_offset(p_tab_count)
+			l_xpos << l_xmin +<< l_self.left_offset(p_tab_count)
+			l_stack_align? << (l_h_alignment _isnt :left) _orif (l_v_alignment _isnt :top)
+			l_spare_height << l_spare_height_start
+			>> ({l_left_x, l_y_start, tab_char, :tab, p_tab_count, l_width, l_row_height, l_selectable?})
+		_endproc
+	_local l_align_out_helper <<
+		_iter _proc @align_out_helper ()
+			_import l_aligns, l_h_alignment, l_v_alignment, l_xmax, l_xpos, l_skip?, l_spare_height, l_csh
+			_if (l_skip? _is _true) _orif l_aligns.empty? _then _return l_aligns.empty() _endif 
+			# compute the amount to align
+			_local l_width_to_align << _if (l_h_alignment _is :right)
+						   _then >> (l_xmax - l_xpos)
+						   _elif (l_h_alignment _is :left)
+						   _then >> 0
+						   _else >> (l_xmax - l_xpos) _div 2 # centre
+						   _endif
+			_local l_height_to_align << _if (l_v_alignment _is :top)
+						    _then >> 0
+						    _elif (l_v_alignment _is :bottom)
+						    _then >> l_spare_height - l_csh * 2
+						    _else >> (l_spare_height _div 2) - l_csh # centre
+						    _endif
+			_for i_outvals _over l_aligns.fast_elements()
+			_loop
+				# adjust xpos and ypos
+				i_outvals[1] +<< l_width_to_align
+				i_outvals[2] +<< l_height_to_align
+				_if (_loopbody (i_outvals) _is _true)
+				_then
+					l_skip? << _true
+					_leave
+				_endif 
+			_endloop
+			# this will only be called when the iter completes, but it will
+			l_aligns.empty()
+	      _endproc
+	# for the first (visible) column, reserve space for the tree connect lines, and yield the max...
+	_block
+		l_skip? << _loopbody (_scatter l_setup_tab_helper(1))
+	_endblock
+	_for i_text, i_text_style, i_type, i_width, i_height, i_value _over _self.texts_and_text_styles() 
+	_loop
+		_if (i_text _is tab_char) 
+		_then
+			_for i_values _over l_align_out_helper() _loop >> _loopbody (_scatter i_values) _endloop
+			_if l_no_document_style?
+			_then
+				# a new tab moves to a new cell, we start at the top again
+				l_y_start << p_y
+			_endif
+			l_skip? << _loopbody (_scatter l_setup_tab_helper(l_tab_count +<< 1))
+			_if (i_text_style _isnt _unset)
+			_then
+				# overrule column alignment
+				l_stack_align? << ((l_h_alignment << i_text_style) _isnt :left) _orif (l_v_alignment _isnt :top)
+			_endif
+		_elif _not l_visible?
+		_then
+			_continue _with _true
+		_elif (i_text _is newline_char) # for multilines
+		_then
+			l_xpos << l_xmin
+			l_y_start +<< l_line_height
+			l_spare_height -<< l_line_height
+		_elif (i_type _is :align)
+		_then
+			# purge previous output
+			_for i_values _over l_align_out_helper() _loop >> _loopbody (_scatter i_values) _endloop
+			# this is the place to overrule h/v alignmnet
+			l_stack_align? << ((l_h_alignment << i_value[1].default(l_h_alignment)) _isnt :left) _or
+					  ((l_v_alignment << i_value[2].default(l_v_alignment)) _isnt :top)
+		_elif (i_type _is :merge)
+		_then
+			# merge cells horizontally
+			(l_xmin, l_xmax, l_visible?, l_h_alignment, l_selectable?, l_tab_start, l_tab_end) <<
+				l_headings_holder.merged_tab_info(l_tab_count, i_value)
+			l_xmax -<< l_self.right_offset(l_tab_end)
+			l_xpos << l_xmin +<< l_self.left_offset(l_tab_start)
+			l_skip? << _loopbody (l_xpos, l_y_start, tab_char, :tab, l_tab_count, l_xmax - l_xpos, l_row_height, l_selectable?)
+			l_tab_count << l_tab_end
+		_elif (i_type _is :move)
+		_then
+			l_xpos +<< i_value[1].default(0)
+			l_y_start +<< i_value[2].default(0)
+		_else
+			# add the width of the new part
+			l_text << i_text
+			l_new_x << l_xpos + (l_width << i_width)
+			_if (i_text_style _is :resolved_image) _orif (i_type _is :custom_draw)
+			_then
+				# i_height contains the height of the image; we want to centre
+				# the image on the line, which - in turn - will be aligned in a
+				# certain way (top, middle or bottom).
+				l_y << l_y_start + (l_csh.max(l_line_height - i_height) _div 2)
+			_else 
+				l_y << l_y_start + l_csh
+				# check how we are for space...
+				_if (l_new_x > l_xmax + 1) 
+				_then
+					# we have a piece of text that does not fit, truncate it
+					(l_text, l_width) << _self.style_holder.truncate_text(i_text, i_text_style, l_xmax - l_xpos)
+					l_new_x << l_xpos + l_width
+				_endif
+			_endif
+			# we have some text or image to output
+			_if l_stack_align?
+			_then
+				l_aligns.add({l_xpos ^<< l_new_x, l_y, l_text, i_text_style, i_type, l_width, i_height, i_value})
+			_elif (l_skip? _isnt _true)
+			_then
+				# ToDo: in the future, we are going to allow multiple lines (therefore p_y)
+				l_skip? << _loopbody(l_xpos ^<< l_new_x, l_y, l_text, i_text_style, i_type, l_width, i_height, i_value)
+			_endif
+			_if (l_new_x > l_xmax) _then _continue _with _true _endif 
+		_endif
+		>> l_skip?
+	_finally
+		_for i_values _over l_align_out_helper() _loop >> _loopbody (_scatter i_values) _endloop
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_string_renderer.render(p_x, p_y, p_xmax, p_ymax, p_index)
+	##
+	# Author         : GE Smallworld (Ken Korsmit)
+	# Date           : Oct/2001
+	#
+	## Parameters    : P_X: The x-coordinate *from which* we need
+	##                    to start rendering. Only columns whose
+	##                    right offset is larger than P_X will be rendered.
+	##                    the row_heading, nothing is rendered.
+	##                 P_Y: The y-coordinate *at which* the row
+	##                    heading needs to be rendered.
+	##                 P_XMAX: Maximal horizontal value to be used
+	##                 P_YMAX: Maximal vertical value to be used
+	##                 P_INDEX: The index we are in the list of all
+	##                    things rendered, this will be used as a default text.
+	## Returns       : 
+	## Function      : Renders the self's value at (0, P_Y)
+
+	_self.render_decorations(p_x, p_y, p_xmax, p_ymax, p_index)
+
+	_local l_selected_row_style << _self.selected_row_style
+	_local l_tabular_style? << _self.style_holder.tabular_style?
+	_local l_spw << _self.style_holder.selection_spacing_w
+	_local l_xmax << _if (l_clipbounds << _self.clip_bounds) _is _unset
+			 _then >> p_xmax
+			 _else >> p_xmax.min(l_clipbounds.xmax)
+			 _endif
+	_local l_y << p_y + _self.half_row_height, l_xr << 0
+	_local l_selected? << _false
+
+	_for i_x, i_y, i_text, i_text_style, i_type, i_width, i_height, i_value _over _self.positioned_texts_and_text_styles(0, p_y)
+	_loop
+		_if (i_text_style _is :tab)
+		_then
+			l_xr << i_x + i_width
+			_if (i_x > l_xmax) _orif (l_xr < p_x) _then _continue _with _true _endif
+			# check if this column is selectable
+			_if (l_selected? << i_value _andif _self.is_column_selected?(i_type)) _andif l_tabular_style?
+			_then
+				_self.draw_segment(l_selected_row_style, i_x, l_y, l_xr, l_y)
+			_endif
+			# set the right most position that has been used for drawing the selection bar
+			l_xr << i_x
+		_elif (i_text_style _is :resolved_image)
+		_then
+			l_xr << i_x + i_width
+			_self.int!render_image(i_text, i_x, i_y)
+		_elif (i_type _is :custom_draw)
+		_then
+			l_xr << i_x + i_width
+			# the customer drawing renderer is invoked here
+			i_text.render(.canvas, i_x, i_y, i_text_style, .value_holder)
+		_elif l_selected?
+		_then
+			_if _not l_tabular_style?
+			_then
+				# the selection is enlarged horizontally by l_spw to the left and right
+				# use l_xr to prevent overwriting what is previously drawn
+				_self.draw_segment(l_selected_row_style, l_xr.max(i_x - l_spw), l_y, i_x + i_width + l_spw, l_y)
+			_endif
+			_self.draw_text(_self.selected_text_style_for(i_text_style), i_x, i_y, i_text)
+			l_xr << i_x + i_width
+		_else 
+			_self.draw_text(i_text_style, i_x, i_y, i_text)
+		_endif
+	_endloop
+	
+	_self.render_row_heading(p_x, p_y, p_index)
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method styled_string_renderer.int!render_image(p_image_name, p_x, p_y)
+	## Parameters    : P_IMAGE_NAME: Name of the image we want to
+	##                    render (internal image, or simple_vector
+	##                    containing external image name and optionally a module name)
+	##                 P_X, P_Y: Position where we want to render
+	##                    the image
+	## Returns       : -
+	## Function      : Render the image named P_IMAGE_NAME at P_X, P_Y.
+	# the real image is only resolved here, since L_CANVAS is used as a parameter
+	_local (l_image, l_raster?) << _self.style_holder.image(p_image_name, l_canvas << .canvas)
+	_if l_raster?
+	_then
+		l_canvas.render_raster(l_image, p_x, p_y, _false)
+	_else 
+		l_canvas.render_image(l_image, p_x, p_y, _true)
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method styled_string_renderer.styled_element_at(p_x, p_y)
+	## Parameters    : P_X: Horizontal position on the internal window.
+	##                 P_Y: Relative height *inside* the row that
+	##                    we are checking.
+	## Returns       : Either _false, or
+	##                 1) _true
+	##                 2) Type, being :value, :toggle, :radio_toggle, :image, etc.
+	##                 3) Value, being the index that was following
+	##                    the :type (2) in the original styled string.
+	##                 4) Text style used, or :resolved_image
+	##                 5) Text or image being clicked at
+	##                 6) X-offset inside the element denoted by '5'.
+	##                 7) Y-offset inside the element denoted by '5'.
+	##                 8) Width of the element denoted by '5'.
+	##                 9) Height of the element denoted by '5'.
+	## Function      : Find the element inside the current
+	##                 .value_holder (most likely to be a display_tree with a styled_string)
+	##                 that has been clicked on.
+	_for i_x, i_y, i_text, i_text_style, i_type, i_width, i_height, i_value _over _self.positioned_texts_and_text_styles(0, 0)
+	_loop
+		_if (i_text_style _is :tab)
+		_then
+			_local l_column_max << i_x + i_width
+			_if (p_x > l_column_max)
+			_then
+				_continue _with _true 
+			_endif
+		_else
+			_if p_x.in_range?(i_x, i_x + i_width) _andif p_y.in_range?(i_y, i_y + i_height)
+			_then
+				_return (_true, i_type, i_value, i_text_style, i_text, p_x - i_x, p_y - i_y, i_width, i_height)
+			_endif
+		_endif 
+	_endloop
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method styled_string_renderer.handle_click(p_x, p_y, p_event, p_agent)
+	## Parameters    : P_X: Horizontal position on the internal window.
+	##                 P_Y: Relative height *inside* the row that
+	##                    we are checking.
+	##                 P_EVENT: Event that has been raised.
+	##                 P_AGENT: Normally handling P_EVENT.
+	## Returns       : Either just _false since this is not a click, or
+	##                 1) _false (we did not handle this)
+	##                 2) :click (continue with click_notifier for action :click)
+	##                 Or
+	##                 1) _false (we did not handle this)
+	##                 2) :click_release (continue with
+	##                    release_click_notifier for action :click)
+	##                 Or
+	##                 1) _false (we did not handle this)
+	##                 2) Type, being :value, :toggle, :radio_toggle,
+	##                    :image, etc. This may be treated as a action for which the
+	##                    appropriate notifier is looked up.
+	##                    Note that '_release' is appended if this
+	##                    is a mouse release event.
+	##                 3) Value, being the index that was following
+	##                    the :type (2) in the original styled string.
+	##                 4) Text style used, or :resolved_image
+	##                 5) Text or image being clicked at
+	##                 6) X-offset inside the element denoted by '5'.
+	##                 7) Y-offset inside the element denoted by '5'.
+	##                 8) Width of the element denoted by '5'.
+	##                 9) Height of the element denoted by '5'.
+	## Function      : Check if P_EVENT concerns a click or double
+	##                 click, and if so, return the appropriate
+	##                 action and data.
+	_local (l_found?, l_type, _gather l_rest) << _self.styled_element_at(p_x, p_y)
+	_if _not l_found?
+	_then
+		l_type << :click
+	_elif (l_type _is :text) _andif _self.style_holder.is_hypertext?(l_rest[2])
+	_then
+		l_type << :hypertext
+	_endif
+	_if ((p_event.func _is :release) _orif (p_event.func _is :double_release))
+	_then
+		l_type +<< :_release
+	_endif
+	# e.g.   _false, :toggle, 1, :resolved_image, :toggle_down, 9, 5, 175, 18
+	>> (_false, l_type, _scatter l_rest)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method styled_string_renderer.column_at(p_x)
+	## Parameters    : P_X: Horizontal position in self's window.
+	## Returns       : The number of the column that includes P_X,
+	##                 _unset if not is found.
+	## Function      : 
+	_local l_headings_holder << _self.headings_holder
+	_for i_column_index _over l_headings_holder.fast_indices(_true)
+	_loop
+		_local (l_xmin, l_xmax, l_visible?, l_align, l_selectable?) << l_headings_holder.tab_info(i_column_index)
+		_if (p_x < l_xmin)
+		_then
+			_leave
+		_elif (p_x <= l_xmax)
+		_then
+			_return i_column_index
+		_endif
+	_endloop 
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_string_renderer.render_decorations(p_x, p_y, p_xmax, p_ymax, p_index)
+	# Author         : GE Smallworld (Ken Korsmit)
+	# Date           : Nov/2001
+	#
+	## Parameters    : P_X: The x-coordinate *from which* we need
+	##                    to start rendering. Only columns whose
+	##                    right offset is larger than P_X will be rendered.
+	##                    the row_heading, nothing is rendered.
+	##                 P_Y: The y-coordinate *at which* the row
+	##                    heading needs to be rendered.
+	##                 P_XMAX: Maximal horizontal value to be used
+	##                 P_YMAX: Maximal vertical value to be used
+	##                 P_INDEX: The index we are in the list of all
+	##                    things rendered, this will be used for
+	##                    striper, to check whether it is even.
+	## Returns       : 
+	## Function      : Checks whether we need stripes, or a grid,
+	##                 or if we have an unselectable column, and
+	##                 renders the appropriate appearance.
+	_local l_row_height << _self.row_height
+	_local l_grid_lines? << .grid_lines?
+	_local l_styles_holder << _self.style_holder
+	_local l_grid_line_style << l_styles_holder.grid_line_style
+	# stripes and horizontal gridlines; we draw either stripes or horizontal gridlines
+	_if .stripes? 
+	_then
+		_if (p_index +^<< 1).even?
+		_then
+			_local l_stripe_style << l_styles_holder.stripe_style(l_row_height)
+			_local l_y << p_y + _self.half_row_height
+			_self.draw_segment(l_stripe_style, p_x, l_y, p_xmax, l_y)
+		_endif
+	_elif l_grid_lines?
+	_then
+		_local l_y << p_y + l_row_height - 1
+		_self.draw_segment(l_grid_line_style, p_x, l_y, p_xmax, l_y)
+	_endif
+	# unselectable panels and vertical grid lines
+	_local l_headings_holder << _self.headings_holder
+	_for i_column_index _over 1.upto(l_headings_holder.number_of_columns)
+	_loop
+		_local (l_xmin, l_xmax, l_visible?, l_align, l_selectable?) << l_headings_holder.tab_info(i_column_index)
+		# we draw either unselectable panels or vertical grid lines
+		_if (l_xmin > p_xmax)
+		_then
+			_leave
+		_elif (l_xmax < p_x)
+		_then
+			# do nothing
+		_elif _not l_selectable?
+		_then
+			# draw unselectable background
+			_self.render_panel(l_xmin, p_y, l_xmax - l_xmin, l_row_height, 1)
+		_elif l_grid_lines?
+		_then
+			# draw vertical gridlines
+			_self.draw_segment(l_grid_line_style, l_xmax, p_y, l_xmax, p_y + l_row_height - 1)
+		_endif
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_string_renderer.render_button(p_x, p_y, p_width, p_height, _optional p_bevel, p_text, p_alignment, p_style)
+	## Parameters    : P_X, P_Y: Position where to drawn
+	##                 P_WIDTH, P_HEIGHT: Dimensions to be used
+	##                 [P_BEVEL]: If 1 or _unset, a normal raised button is drawn;
+	##                    if 0, a pressed button is drawn;
+	##                    if -1, an inset, sunken frame is drawn.
+	##                 P_TEXT: String we want to render inside the button
+	##                 P_ALIGNMENT: :left (default), :centre, or :right
+	## Returns       : -
+	## Function      : 
+	_self.render_panel(p_x, p_y, p_width, p_height, p_bevel)
+	_if (p_text _isnt _unset)
+	_then
+		# a 'pressed' button has the text shifted
+		_if (p_bevel _is 0)
+		_then
+			p_x +<< 1; p_y +<< 1
+		_endif
+		_if (p_style _is _unset)
+		_then
+			p_style << _self.style_holder.text_style(:button_text)
+		_endif
+		_self.render_text(p_x, p_y, p_width, p_height, p_text, p_alignment, p_style)
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method styled_string_renderer.render_text(p_x, p_y, p_width, p_height, p_text, _optional p_alignment, p_text_style)
+	##
+	## Parameters    : P_X, P_Y: Top left position where to render text
+	##                 P_WIDTH, P_HEIGHT: Dimension of box in which
+	##                    to render text
+	##                 P_TEXT: Text to render, may contain multiple
+	##                    lines (newline characters)
+	##                 [P_ALIGNMENT]: On of :left (default), :right, :centre,
+	##                    :center, denoting the horizontal alightment.
+	##                 [P_TEXT_STYLE]: Text style to be used for
+	##                    rendering button text.
+	## Returns       : Splits P_TEXT over multiple lines and draws
+	##                 it in the default text style, and uses
+	##                 the cell_spacing as specified by the style_holder.
+
+	_local l_csw << _self.style_holder.cell_spacing_w
+	_local l_csh << _self.style_holder.cell_spacing_h
+	_if (p_text_style _is _unset) _then p_text_style << _self.style_holder.default_style _endif
+	_local l_font << p_text_style.font
+	_local l_texts << _if p_text.is_class_of?(simple_vector) _then >> p_text _else >> {p_text} _endif
+	
+	# compute the y-centre and where to start
+	_local (l_width, l_line_height) << _self.style_holder.text_width_and_height(l_texts.an_element(), p_text_style)
+	_local l_height << l_line_height * l_texts.size
+	
+	p_y +<< _if (.v_alignment _is :top)
+		_then >> l_csh
+		_elif (.v_alignment _is :bottom)
+		_then >> (p_height - l_height - l_csh)
+		_else >> (p_height - l_height) _div 2
+		_endif.max(0)
+	
+	# loop over the lines
+	_for i_text _over l_texts.fast_elements()
+	_loop
+		_local l_x << p_x + _if (p_alignment _is :left)
+				    _then >> l_csw
+				    _elif (p_alignment _is :right)
+				    _then >> (p_width - l_font.string_width(i_text) - l_csw)
+				    _else >> (p_width - l_font.string_width(i_text)) _div 2
+				    _endif
+		_self.draw_text(p_text_style, l_x, p_y +^<< l_line_height, i_text)
+	_endloop
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method styled_string_renderer.draw_segment(p_style, p_x1, p_y1, p_x2, p_y2)
+        ##  Draw a line between the pixel coordinates (X1,Y1) and
+        ##  (X2,Y2) in the line_style STYLE.
+	.canvas.draw_segment(p_style, p_x1, p_y1, p_x2, p_y2)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method styled_string_renderer.draw_text(p_text_style, p_x, p_y, p_text)
+        ##  Draw the text string P_TEXT at the position (PX, P_Y) in pixel
+        ##  coordinate space using the text_style P_TEXT_STYLE.
+        ## 
+        ##  P_TEXT_STYLE is a text style for any sort of font.
+        ##  This method returns the pixel bounding box of the rendered text
+	_if _self.style_holder.is_hypertext?(p_text_style)
+	_then
+		_local (l_w, l_h) << _self.style_holder.text_width_and_height(p_text, p_text_style)
+		.canvas.add_hotspots(hotspot.new_rectangle_with_size(smallworld_product.get_cursor(:hyperlink, :ui_resources), p_x, p_y, l_w, l_h))
+	_endif
+	>> .canvas.draw_text(p_text_style, p_x, p_y, p_text, _unset, _unset, :top_left)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_string_renderer.available_width
+	## Parameters    : 
+	## Returns       : Width in pixel that is available to draw on
+	## Function      : 
+	>> .canvas.width
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={internal})
+_method styled_string_renderer.clip_bounds
+	## Return a pixel_bounding_box which defines the clip box of
+	## the canvas on which is rendered;
+	## if no clipbounds has been set, this will return unset.
+	>> .canvas.int!clip_bounds
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={internal})
+_method styled_string_renderer.clip_bounds ^<< p_new
+	## Sets the the clip box of the canvas on which is rendered.
+	## P_NEW is either a pixel_bounding_box, or _unset to clear the
+	## currently set clip_bounds.
+	_local l_old << _self.clip_bounds
+	_self.clip_bounds << p_new
+	>> l_old
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={internal})
+_method styled_string_renderer.clip_bounds << p_new
+	## Sets the the clip box of the canvas on which is rendered.
+	## P_NEW is either a pixel_bounding_box, or _unset to clear the
+	## currently set clip_bounds.
+	>> .canvas.clip_bounds << p_new
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method styled_string_renderer.render_image(p_x, p_y, p_width, p_height, p_image_name, _optional p_alignment)
+	##
+	## Parameters    : P_X, P_Y: Top left position where to render text
+	##                 P_WIDTH, P_HEIGHT: Dimension of box in which
+	##                    to render text
+	##                 P_IMAGE_NAME: Name of the image we want to
+	##                    render (internal image, or simple_vector
+	##                    containing external image name and optionally a module name)
+	##                 [P_ALIGNMENT]: On of :left (default), :right, :centre,
+	##                    :center, denoting the horizontal alightment.
+	## Returns       : Splits P_TEXT over multiple lines and draws
+	##                 it in the default text style, and uses
+	##                 the cell_spacing as specified by the style_holder.
+	##
+
+	_local l_csw << _self.style_holder.cell_spacing_w
+	_local l_csh << _self.style_holder.cell_spacing_h
+
+	# compute the y-centre and where to start
+	_local (l_width, l_height) << _self.style_holder.image_width_and_height(p_image_name)
+	
+	p_y +<< _if (.v_alignment _is :top)
+		_then >> l_csh
+		_elif (.v_alignment _is :bottom)
+		_then >> (p_height - l_height - l_csh)
+		_else >> (p_height - l_height) _div 2
+		_endif
+	p_x +<< _if (p_alignment _is :left)
+		_then >> l_csw
+		_elif (p_alignment _is :right)
+		_then >> (p_width - l_width - l_csw)
+		_else >> (p_width - l_width) _div 2
+		_endif
+	
+	_self.int!render_image(p_image_name, p_x, p_y)
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method styled_string_renderer.selected_text_style_for(p_text_style)
+	## Parameters    : P_TEXT_STYLE: A text_style that is known to self.
+	## Returns       : The highlighted version (for selection) of P_TEXT_STYLE.
+	## Function      : Obtain ^^^.
+	>> _if _self.canvas.draw_focus?
+	   _then >> _self.style_holder.selected_text_style_for(p_text_style)
+	   _else >> p_text_style
+	   _endif
+_endmethod
+$
+

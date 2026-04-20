@@ -1,0 +1,602 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+# ----------
+# Add information for !current_locale!, this should be read from the
+# OS, really
+# ----------
+_block
+	!current_locale![:styled_string_colon] << ": "
+	!current_locale![:styled_string_sep] << ", "
+	!current_locale![:unset_value] << ""
+_endblock
+$
+
+# ----------
+# Default screen control colours, this should be read from the
+# OS, really
+# ----------
+_block
+	colour.called(:foreground)            << colour.called(:black)
+	colour.called(:background)            << colour.called(:white)
+	colour.called(:highlight)             << colour.called(:navy)
+	colour.called(:highlight_text)        << colour.called(:white)
+	colour.called(:stripes)               << colour.called(:navajowhite)
+	colour.called(:button_face)           << colour.called(:lightgrey)
+	colour.called(:button_shadow)         << colour.called(:gray)
+	colour.called(:button_highlight)      << colour.called(:white)
+	colour.called(:button_text)           << colour.called(:black)
+	colour.called(:application_workspace) << colour.called(:button_shadow)
+	colour.called(:window_workspace)      << colour.called(:button_face)
+_endblock
+$
+
+# ----------
+# Default text styles to be used by anyone
+# ----------
+_block
+	_local l_default_style << text_style.new(colour.called(:foreground), text_style.font)
+	# ToDo: Should actually be done on windows system initialise; font used is font.new_usage("default")
+	string_styles_holder.add_text_style(:default, string_styles_holder.default_style << l_default_style)
+	# For now, the only fonts used are plain, bold, fancy and fixed, since those are supported PS fonts as well
+	# Otherwise, doc_default and doc_heading would have been useful in some occasions
+	# Add some common style for general use
+	string_styles_holder.add_text_style(:normal,     :foreground,    _false, font.new_logical("plain", 12))
+	string_styles_holder.add_text_style(:strong,     # defined as bold, for now
+	string_styles_holder.add_text_style(:bold,       :foreground,    _false, font.new_logical("bold",  12)))
+	string_styles_holder.add_text_style(:inserted,   :green,         _false, font.new_logical("bold", 12))
+	string_styles_holder.add_text_style(:inserted_m, :foreground,    _false, font.new_logical("bold", 12))
+	string_styles_holder.add_text_style(:deleted,    :maroon,        _false, _unset, _false, _true)
+	string_styles_holder.add_text_style(:deleted_m,  :foreground,    _false, _unset, _false, _true)
+	string_styles_holder.add_text_style(:emphasis,   # defined as italic, for now
+	string_styles_holder.add_text_style(:italic,     :foreground,    _false, font.new_logical("fancy", 12)))
+	string_styles_holder.add_text_style(:error,      :red,           _false, font.new_logical("bold",  12))
+	string_styles_holder.add_text_style(:disabled,   :button_shadow, _false)
+	# Add some standard HTML styles
+	string_styles_holder.add_text_style(:hyperlink,  :blue,          _true,  _unset, _true)
+	string_styles_holder.add_text_style(:used_hyperlink, :purple,    _true,  _unset, _true)
+	string_styles_holder.add_text_style(:typewriter, # symnonym for code
+	string_styles_holder.add_text_style(:code,       :foreground,    _false, font.new_logical("fixed", 12)))
+	string_styles_holder.add_text_style(:heading_1,  :foreground,    _false, font.new_logical("bold",  24))
+	string_styles_holder.add_text_style(:heading_2,  :foreground,    _false, font.new_logical("bold",  18))
+	string_styles_holder.add_text_style(:heading_3,  :foreground,    _false, font.new_logical("bold",  14))
+	string_styles_holder.add_text_style(:heading_4,  :foreground,    _false, font.new_logical("bold",  12))
+	string_styles_holder.add_text_style(:heading_5,  :foreground,    _false, font.new_logical("bold",  10))
+	string_styles_holder.add_text_style(:heading_6,  :foreground,    _false, font.new_logical("bold",   8))
+_endblock
+$
+
+_block
+	# very common - default backstop...
+	string_styles_holder.add_image_scheme(:default, :leaf, :yellow_bullet, :expanded, :open_folder, :collapsed, :closed_folder)
+	string_styles_holder.add_image(
+		:default, # name
+		{{:b, :black},
+		 {:r, :red},
+		 {:w, :white},
+		 {:s, :silver},
+		 {:g, :gray}},
+		16, 16, # width x heigth
+		{0, :s, :s, :s, :s, :s, :s, :s, :s, :s, :s, :s, :s, :s, :s,  0, #1
+		 0, :s, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :g, :b,  0, #2
+		 0, :s, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :g, :b,  0, #3
+		 0, :s, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :g, :b,  0, #4
+		 0, :s, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :g, :b,  0, #5
+		 0, :s, :w, :w, :w, :r, :r, :w, :w, :r, :r, :w, :w, :g, :b,  0, #6
+		 0, :s, :w, :w, :w, :w, :r, :r, :r, :r, :w, :w, :w, :g, :b,  0, #7
+		 0, :s, :w, :w, :w, :w, :w, :r, :r, :w, :w, :w, :w, :g, :b,  0, #8
+		 0, :s, :w, :w, :w, :w, :r, :r, :r, :r, :w, :w, :w, :g, :b,  0, #9
+		 0, :s, :w, :w, :w, :r, :r, :w, :w, :r, :r, :w, :w, :g, :b,  0, #10
+		 0, :s, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :g, :b,  0, #11
+		 0, :s, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :g, :b,  0, #12
+		 0, :s, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :g, :b,  0, #13
+		 0, :s, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :g, :b,  0, #14
+		 0, :s, :g, :g, :g, :g, :g, :g, :g, :g, :g, :g, :g, :g, :b,  0, #15
+		 0, :b, :b, :b, :b, :b, :b, :b, :b, :b, :b, :b, :b, :b, :b,  0})#16
+	string_styles_holder.add_image(
+		:yellow_bullet, #name
+		{{:y, :yellow},
+		 {:o, :olive},
+		 {:m, :maroon},
+		 {:w, :white},
+		 {:s, :silver},
+		 {:g, :gray}},
+		16, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+		  0,  0,  0,  0,  0, :y, :o, :o, :o, :m, :s,  0,  0,  0,  0,  0, #4
+		  0,  0,  0,  0, :o, :o, :s, :w, :y, :w, :m, :o,  0,  0,  0,  0, #5
+		  0,  0,  0, :y, :o, :s, :w, :y, :w, :y, :w, :m, :s,  0,  0,  0, #6
+		  0,  0,  0, :o, :s, :w, :y, :w, :w, :w, :y, :o, :o,  0,  0,  0, #7
+		  0,  0,  0, :o, :w, :y, :w, :y, :w, :y, :w, :y, :m,  0,  0,  0, #8
+		  0,  0,  0, :o, :y, :w, :y, :w, :y, :w, :y, :g, :m,  0,  0,  0, #9
+		  0,  0,  0, :m, :g, :y, :w, :y, :w, :y, :y, :m, :o,  0,  0,  0, #10
+		  0,  0,  0, :s, :m, :y, :y, :y, :y, :y, :g, :m, :s,  0,  0,  0, #11
+		  0,  0,  0,  0, :o, :m, :g, :y, :g, :m, :m, :o,  0,  0,  0,  0, #12
+		  0,  0,  0,  0,  0, :s, :o, :m, :m, :o, :s,  0,  0,  0,  0,  0, #13
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+_endblock
+$
+
+_block
+	string_styles_holder.add_image_scheme(:sort_ascending, :default, :triangle_up)
+	string_styles_holder.add_image_scheme(:sort_descending, :default, :triangle_down)
+	string_styles_holder.add_image(
+		:triangle_up, # name
+		{{:b, :button_face},
+		 {:w, :button_highlight},
+		 {:g, :button_shadow}},
+		16, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #5
+		  0,  0,  0,  0,  0,  0,  0, :g, :w,  0,  0,  0,  0,  0,  0,  0, #6
+		  0,  0,  0,  0,  0,  0, :g, :g, :w, :w,  0,  0,  0,  0,  0,  0, #7
+		  0,  0,  0,  0,  0,  0, :g, :b, :b, :w,  0,  0,  0,  0,  0,  0, #8
+		  0,  0,  0,  0,  0, :g, :g, :b, :b, :w, :w,  0,  0,  0,  0,  0, #9
+		  0,  0,  0,  0,  0, :g, :b, :b, :b, :b, :w,  0,  0,  0,  0,  0, #10
+		  0,  0,  0,  0, :g, :g, :b, :b, :b, :b, :w, :w,  0,  0,  0,  0, #11
+		  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w,  0,  0,  0,  0, #12
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #13
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+	string_styles_holder.add_image(
+		:triangle_down, # name
+		{{:b, :button_face},
+		 {:w, :button_highlight},
+		 {:g, :button_shadow}},
+		16, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+		  0,  0,  0,  0, :g, :g, :g, :g, :g, :g, :g, :g,  0,  0,  0,  0, #5
+		  0,  0,  0,  0, :g, :g, :b, :b, :b, :b, :w, :w,  0,  0,  0,  0, #6
+		  0,  0,  0,  0,  0, :g, :b, :b, :b, :b, :w, :b,  0,  0,  0,  0, #7
+		  0,  0,  0,  0,  0, :g, :g, :b, :b, :w, :w,  0,  0,  0,  0,  0, #8
+		  0,  0,  0,  0,  0,  0, :g, :b, :b, :w,  0,  0,  0,  0,  0,  0, #9
+		  0,  0,  0,  0,  0,  0, :g, :g, :w, :w,  0,  0,  0,  0,  0,  0, #10
+		  0,  0,  0,  0,  0,  0,  0, :g, :w,  0,  0,  0,  0,  0,  0,  0, #11
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #12
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #13
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+_endblock
+$
+
+_block
+	# toggle
+	string_styles_holder.add_value_scheme(:toggle, _true, :toggle_true, _false, :toggle_false, _maybe, :toggle_maybe, _unset, :toggle_idle)
+	string_styles_holder.add_toggle_scheme(:toggle, _true, _false, _false, _true, _maybe, _true, _unset, _true)
+	string_styles_holder.add_image(
+		:toggle_false, # name
+		{{:b, :black},
+		 {:w, :white},
+		 {:s, :silver},
+		 {:g, :gray}},
+		16, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0, :g, :g, :g, :g, :g, :g, :g, :g, :g, :g, :g, :s,  0,  0, #3
+		  0,  0, :g, :b, :b, :b, :b, :b, :b, :b, :b, :b, :g, :s,  0,  0, #4
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #5
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #6
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #7
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #8
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #9
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #10
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #11
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #12
+		  0,  0, :g, :b, :g, :g, :g, :g, :g, :g, :g, :g, :g, :s,  0,  0, #13
+		  0,  0, :g, :s, :s, :s, :s, :s, :s, :s, :s, :s, :s, :s,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+	string_styles_holder.add_image(
+		:toggle_true, # name
+		{{:b, :black},
+		 {:w, :white},
+		 {:s, :silver},
+		 {:g, :gray}},
+		16, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0, :g, :g, :g, :g, :g, :g, :g, :g, :g, :g, :g, :s,  0,  0, #3
+		  0,  0, :g, :b, :b, :b, :b, :b, :b, :b, :b, :b, :g, :s,  0,  0, #4
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #5
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :g, :w, :g, :s,  0,  0, #6
+		  0,  0, :g, :b, :w, :g, :w, :w, :w, :g, :b, :w, :g, :s,  0,  0, #7
+		  0,  0, :g, :b, :w, :b, :g, :w, :g, :b, :b, :w, :g, :s,  0,  0, #8
+		  0,  0, :g, :b, :w, :b, :b, :g, :b, :b, :w, :w, :g, :s,  0,  0, #9
+		  0,  0, :g, :b, :w, :w, :b, :b, :b, :w, :w, :w, :g, :s,  0,  0, #10
+		  0,  0, :g, :b, :w, :w, :w, :b, :w, :w, :w, :w, :g, :s,  0,  0, #11
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #12
+		  0,  0, :g, :b, :g, :g, :g, :g, :g, :g, :g, :g, :g, :s,  0,  0, #13
+		  0,  0, :g, :s, :s, :s, :s, :s, :s, :s, :s, :s, :s, :s,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+	string_styles_holder.add_image(
+		:toggle_maybe, # name
+		{{:b, :black},
+		 {:w, :white},
+		 {:s, :silver},
+		 {:g, :gray}},
+		16, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0, :g, :g, :g, :g, :g, :g, :g, :g, :g, :g, :g, :s,  0,  0, #3
+		  0,  0, :g, :b, :b, :b, :b, :b, :b, :b, :b, :b, :g, :s,  0,  0, #4
+		  0,  0, :g, :b, :w, :s, :w, :s, :w, :s, :w, :s, :g, :s,  0,  0, #5
+		  0,  0, :g, :b, :s, :w, :s, :w, :s, :w, :g, :w, :g, :s,  0,  0, #6
+		  0,  0, :g, :b, :w, :g, :w, :s, :w, :g, :g, :s, :g, :s,  0,  0, #7
+		  0,  0, :g, :b, :s, :g, :g, :w, :g, :g, :g, :w, :g, :s,  0,  0, #8
+		  0,  0, :g, :b, :w, :g, :g, :g, :g, :g, :w, :s, :g, :s,  0,  0, #9
+		  0,  0, :g, :b, :s, :w, :g, :g, :g, :w, :s, :w, :g, :s,  0,  0, #10
+		  0,  0, :g, :b, :w, :s, :w, :g, :w, :s, :w, :s, :g, :s,  0,  0, #11
+		  0,  0, :g, :b, :s, :w, :s, :w, :s, :w, :s, :w, :g, :s,  0,  0, #12
+		  0,  0, :g, :b, :g, :g, :g, :g, :g, :g, :g, :g, :g, :s,  0,  0, #13
+		  0,  0, :g, :s, :s, :s, :s, :s, :s, :s, :s, :s, :s, :s,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+	string_styles_holder.add_image(
+		:toggle_idle, # name
+		{{:b, :black},
+		 {:w, :white},
+		 {:s, :silver},
+		 {:g, :gray}},
+		16, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0, :s, :w, :s, :w, :s, :w, :s, :w, :s, :w, :s, :w,  0,  0, #3
+		  0,  0, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :s,  0,  0, #4
+		  0,  0, :s, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w,  0,  0, #5
+		  0,  0, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :s,  0,  0, #6
+		  0,  0, :s, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w,  0,  0, #7
+		  0,  0, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :s,  0,  0, #8
+		  0,  0, :s, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w,  0,  0, #9
+		  0,  0, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :s,  0,  0, #10
+		  0,  0, :s, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w,  0,  0, #11
+		  0,  0, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :s,  0,  0, #12
+		  0,  0, :s, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w, :w,  0,  0, #13
+		  0,  0, :w, :s, :w, :s, :w, :s, :w, :s, :w, :s, :w, :s,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+_endblock
+$
+
+_block
+	# radio toggle
+	string_styles_holder.add_value_scheme(:radio_toggle, _true, :radio_true, _false, :radio_false, _maybe, :default)
+	string_styles_holder.add_toggle_scheme(:radio_toggle, _true, _true, _false, _true, _maybe, _true)
+	string_styles_holder.add_image(
+		:radio_true, # name
+		{{:b, :black},
+		 {:r, :red},
+		 {:w, :white},
+		 {:s, :silver},
+		 {:g, :gray}},
+		16, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0,  0,  0,  0,  0, :g, :g, :g, :g,  0,  0,  0,  0,  0,  0, #3
+		  0,  0,  0,  0, :g, :g, :b, :b, :b, :b, :g, :g,  0,  0,  0,  0, #4
+		  0,  0,  0, :g, :b, :b, :w, :w, :w, :w, :b, :b, :s,  0,  0,  0, #5
+		  0,  0,  0, :g, :b, :w, :s, :b, :b, :s, :w, :g, :s,  0,  0,  0, #6
+		  0,  0, :g, :b, :w, :s, :b, :g, :g, :b, :s, :w, :g, :s,  0,  0, #7
+		  0,  0, :g, :b, :w, :b, :g, :b, :b, :b, :b, :w, :g, :s,  0,  0, #8
+		  0,  0, :g, :b, :w, :b, :g, :b, :b, :b, :b, :w, :g, :s,  0,  0, #9
+		  0,  0, :g, :b, :w, :s, :b, :b, :b, :b, :s, :w, :g, :s,  0,  0, #10
+		  0,  0,  0, :g, :b, :w, :s, :b, :b, :s, :w, :g, :s,  0,  0,  0, #11
+		  0,  0,  0, :g, :g, :g, :w, :w, :w, :w, :g, :g, :s,  0,  0,  0, #12
+		  0,  0,  0,  0, :s, :s, :g, :g, :g, :g, :s, :s,  0,  0,  0,  0, #13
+		  0,  0,  0,  0,  0,  0, :s, :s, :s, :s,  0,  0,  0,  0,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+	string_styles_holder.add_image(
+		:radio_false, # name
+		{{:b, :black},
+		 {:r, :red},
+		 {:w, :white},
+		 {:s, :silver},
+		 {:g, :gray}},
+		16, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0,  0,  0,  0,  0, :g, :g, :g, :g,  0,  0,  0,  0,  0,  0, #3
+		  0,  0,  0,  0, :g, :g, :b, :b, :b, :b, :g, :g,  0,  0,  0,  0, #4
+		  0,  0,  0, :g, :b, :b, :w, :w, :w, :w, :b, :b, :s,  0,  0,  0, #5
+		  0,  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0,  0, #6
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #7
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #8
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #9
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #10
+		  0,  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0,  0, #11
+		  0,  0,  0, :g, :g, :g, :w, :w, :w, :w, :g, :g, :s,  0,  0,  0, #12
+		  0,  0,  0,  0, :s, :s, :g, :g, :g, :g, :s, :s,  0,  0,  0,  0, #13
+		  0,  0,  0,  0,  0,  0, :s, :s, :s, :s,  0,  0,  0,  0,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+_endblock
+$
+
+_block
+	# small toggle for vhs
+	string_styles_holder.add_value_scheme(:visible, _true, :small_toggle_true, _false, :small_toggle_false, _maybe, :small_toggle_maybe)
+	string_styles_holder.add_value_scheme(:hittable, _true, :small_toggle_true, _false, :small_toggle_false, _maybe, :small_toggle_maybe)
+	string_styles_holder.add_value_scheme(:selectable, _true, :small_toggle_true, _false, :small_toggle_false, _maybe, :small_toggle_maybe)
+	string_styles_holder.add_image(
+		:small_toggle_false, # name
+		{{:b, :black},
+		 {:w, :white},
+		 {:s, :silver},
+		 {:g, :gray}},
+		9, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+		 :g, :g, :g, :g, :g, :g, :g,  0,  0, #5
+		 :g, :w, :w, :w, :w, :w, :g,  0,  0, #6
+		 :g, :w, :w, :w, :w, :w, :g,  0,  0, #7
+		 :g, :w, :w, :w, :w, :w, :g,  0,  0, #8
+		 :g, :w, :w, :w, :w, :w, :g,  0,  0, #9
+		 :g, :w, :w, :w, :w, :w, :g,  0,  0, #10
+		 :g, :w, :w, :w, :w, :w, :g,  0,  0, #11
+		 :g, :g, :g, :g, :g, :g, :g,  0,  0, #12
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #13
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+	string_styles_holder.add_image(
+		:small_toggle_true, # name
+		{{:b, :black},
+		 {:w, :white},
+		 {:s, :silver},
+		 {:g, :gray}},
+		9, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+		 :g, :g, :g, :g, :g, :g, :g,  0,  0, #5
+		 :g, :w, :w, :w, :w, :g, :g,  0,  0, #6
+		 :g, :w, :w, :w, :g, :b, :g,  0,  0, #7
+		 :b, :g, :w, :g, :b, :b, :g,  0,  0, #8
+		 :b, :b, :g, :b, :b, :w, :g,  0,  0, #9
+		 :g, :b, :b, :b, :w, :w, :g,  0,  0, #10
+		 :g, :w, :b, :w, :w, :w, :g,  0,  0, #11
+		 :g, :g, :g, :g, :g, :g, :g,  0,  0, #12
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #13
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+	string_styles_holder.add_image(
+		:small_toggle_maybe, # name
+		{{:b, :black},
+		 {:w, :white},
+		 {:s, :silver},
+		 {:g, :gray}},
+		9, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+		 :g, :g, :g, :g, :g, :g, :g,  0,  0, #5
+		 :g, :s, :w, :s, :w, :s, :g,  0,  0, #6
+		 :g, :w, :s, :w, :s, :g, :g,  0,  0, #7
+		 :g, :s, :w, :s, :g, :g, :g,  0,  0, #8
+		 :g, :g, :s, :g, :g, :w, :g,  0,  0, #9 
+		 :g, :g, :g, :g, :w, :s, :g,  0,  0, #10
+		 :g, :w, :g, :w, :s, :w, :g,  0,  0, #11
+		 :g, :g, :g, :g, :g, :g, :g,  0,  0, #12
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #13
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+	string_styles_holder.add_image(
+		:small_toggle_idle, # name
+		{{:b, :black},
+		 {:w, :white},
+		 {:s, :silver},
+		 {:g, :gray}},
+		9, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+		 :s, :w, :s, :w, :s, :w, :s,  0,  0, #5
+		 :w, :w, :w, :w, :w, :w, :w,  0,  0, #6
+		 :s, :w, :w, :w, :w, :w, :s,  0,  0, #7
+		 :w, :w, :w, :w, :w, :w, :w,  0,  0, #8
+		 :s, :w, :w, :w, :w, :w, :s,  0,  0, #9
+		 :w, :w, :w, :w, :w, :w, :w,  0,  0, #10
+		 :s, :w, :w, :w, :w, :w, :s,  0,  0, #11
+		 :w, :s, :w, :s, :w, :s, :w,  0,  0, #12
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #13
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+_endblock
+$
+
+_block
+	string_styles_holder.add_image(
+		:greyed_out_square, # name
+		{{:b, :black},
+		 {:r, :red},
+		 {:w, :white},
+		 {:s, :silver},
+		 {:g, :gray}},
+		16, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0, :g, :g, :g, :g, :g, :g, :g, :g, :g, :g, :g, :s,  0,  0, #3
+		  0,  0, :g, :b, :b, :b, :b, :b, :b, :b, :b, :b, :g, :s,  0,  0, #4
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #5
+		  0,  0, :g, :b, :w, :g, :s, :g, :s, :g, :s, :w, :g, :s,  0,  0, #6
+		  0,  0, :g, :b, :w, :s, :g, :s, :g, :s, :g, :w, :g, :s,  0,  0, #7
+		  0,  0, :g, :b, :w, :g, :s, :g, :s, :g, :s, :w, :g, :s,  0,  0, #8
+		  0,  0, :g, :b, :w, :s, :g, :s, :g, :s, :g, :w, :g, :s,  0,  0, #9
+		  0,  0, :g, :b, :w, :g, :s, :g, :s, :g, :s, :w, :g, :s,  0,  0, #10
+		  0,  0, :g, :b, :w, :s, :g, :s, :g, :s, :g, :w, :g, :s,  0,  0, #11
+		  0,  0, :g, :b, :w, :w, :w, :w, :w, :w, :w, :w, :g, :s,  0,  0, #12
+		  0,  0, :g, :b, :g, :g, :g, :g, :g, :g, :g, :g, :g, :s,  0,  0, #13
+		  0,  0, :g, :s, :s, :s, :s, :s, :s, :s, :s, :s, :s, :s,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+_endblock
+$
+
+_block
+	string_styles_holder.add_image(
+		:red_oval, #name
+		{{:r, :red},
+		 {:w, :white}},
+		28, 18, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r,  0,  0,  0,  0,  0, #2
+		  0,  0,  0, :r, :r, :r, :r, :r, :r,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, :r, :r, :r, :r, :r, :r,  0,  0,  0, #3
+		  0,  0, :r, :r, :r, :r,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, :r, :r, :r, :r,  0,  0, #4
+		  0, :r, :r, :r,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, :r, :r, :r,  0, #5
+		  0, :r, :r,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, :r, :r,  0, #6
+		 :r, :r,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, :r, :r, #7
+		 :r, :r,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, :r, :r, #8
+		 :r, :r,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, :r, :r, #9
+		 :r, :r,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, :r, :r, #10
+		 :r, :r,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, :r, :r, #11
+		 :r, :r,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, :r, :r, #12
+		  0, :r, :r,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, :r, :r,  0, #13
+		  0, :r, :r, :r,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, :r, :r, :r,  0, #14
+		  0,  0, :r, :r, :r, :r,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, :r, :r, :r, :r,  0,  0, #15
+		  0,  0,  0, :r, :r, :r, :r, :r, :r,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, :r, :r, :r, :r, :r, :r,  0,  0,  0, #16
+		  0,  0,  0,  0,  0, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r,  0,  0,  0,  0,  0, #17
+		  0,  0,  0,  0,  0,  0,  0,  0, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r, :r,  0,  0,  0,  0,  0,  0,  0,  0})#18
+_endblock
+$
+
+_block
+	#============================================================================== 
+	# Folder-like Icon Schemes
+	#============================================================================== 
+	string_styles_holder.add_image_scheme(:folder,           :expanded,  :open_folder,
+					                         :collapsed, :closed_folder,
+					                         :default,   :closed_folder)
+	#============================================================================== 
+	# Database/collection Icon Schemes
+	#============================================================================== 
+	string_styles_holder.add_image_scheme(:database,             :default,   :database_icon )
+	string_styles_holder.add_image_scheme(:extdb_database,       :default,   :extdb_database_icon )
+	string_styles_holder.add_image_scheme(:collections,          :default,   :boxes_icon)
+	string_styles_holder.add_image_scheme(:collection,           :default,   :box_icon )
+	string_styles_holder.add_image_scheme(:extdb_collection,     :default,   :box_icon )
+	string_styles_holder.add_image_scheme(:view_collection,      :default,   :box_icon )
+	string_styles_holder.add_image_scheme(:internal_table,       :default,   :table_icon )
+	string_styles_holder.add_image_scheme(:collection_name,      :default,   :collection_name_icon )
+	string_styles_holder.add_image_scheme(:alpha_field,          :default,   :alpha_field_icon)
+	string_styles_holder.add_image_scheme(:derived_field,        :default,   :fx_icon)
+	string_styles_holder.add_image_scheme(:enumerator,           :default,   :enumerator_icon )
+	string_styles_holder.add_image_scheme(:domain,               :default,   :domain_icon )
+	string_styles_holder.add_image_scheme(:enumerator_value,     :default,   :enumerator_value_icon)
+	string_styles_holder.add_image_scheme(:ext_enumerator_value, :default,   :ext_enumerator_value_icon)
+	#============================================================================== 
+	# Geometry groups
+	#============================================================================== 
+	string_styles_holder.add_image_scheme(:point,       :default,   :point_icon )
+	string_styles_holder.add_image_scheme(:linear,      :default,   :line_icon )
+	string_styles_holder.add_image_scheme(:area,        :default,   :coverage_icon )
+	string_styles_holder.add_image_scheme(:text,        :default,   :text_icon )
+	string_styles_holder.add_image_scheme(:raster,      :default,   :raster_icon )
+	string_styles_holder.add_image_scheme(:dimension,   :default,   :dimension_icon )
+	string_styles_holder.add_image_scheme(:tin,         :default,   :tin_icon)
+	#============================================================================== 
+	# Alternative Related Icon Schemes
+	#==============================================================================
+	string_styles_holder.add_image_scheme(:alternative,                       :default, :alternative_icon )
+	string_styles_holder.add_image_scheme(:alternative_readonly,              :default, :alternative_readonly_icon)
+	string_styles_holder.add_image_scheme(:alternative_writable,              :default, :alternative_writable_icon)
+	string_styles_holder.add_image_scheme(:alternative_unavailable,           :default, :alternative_unavailable_icon)
+	string_styles_holder.add_image_scheme(:alternative_already_open_writable, :default, :alternative_already_open_writable_icon)
+_endblock
+$
+
+_block
+	string_styles_holder.add_image_scheme(:normal_expand, :leaf, :none, :expanded, :collapsable_icon, :collapsed, :expandable_icon)
+	string_styles_holder.add_image_scheme(:document_expand, :leaf, :none, :expanded, :collapsable_icon, :collapsed, :expandable_icon)
+	string_styles_holder.add_image_scheme(:sort_descending, :default, :triangle_down)
+	string_styles_holder.add_image(
+		:none, # name
+		{},
+		16, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #5
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #6
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #7
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #8
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #9
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #10
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #11
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #12
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #13
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+	string_styles_holder.add_image(
+		:expandable_icon, # name
+		{{:b, :foreground},
+		 {:w, :background},
+		 {:g, :button_shadow}},
+		16, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+		  0,  0,  0,  0, :g, :g, :g, :g, :g, :g, :g, :g, :g,  0,  0,  0, #5
+		  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #6
+		  0,  0,  0,  0, :g, :w, :w, :w, :b, :w, :w, :w, :g,  0,  0,  0, #7
+		  0,  0,  0,  0, :g, :w, :w, :w, :b, :w, :w, :w, :g,  0,  0,  0, #8
+		  0,  0,  0,  0, :g, :w, :b, :b, :b, :b, :b, :w, :g,  0,  0,  0, #9
+		  0,  0,  0,  0, :g, :w, :w, :w, :b, :w, :w, :w, :g,  0,  0,  0, #10
+		  0,  0,  0,  0, :g, :w, :w, :w, :b, :w, :w, :w, :g,  0,  0,  0, #11
+		  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #12
+		  0,  0,  0,  0, :g, :g, :g, :g, :g, :g, :g, :g, :g,  0,  0,  0, #13
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+	string_styles_holder.add_image(
+		:collapsable_icon, # name
+		{{:b, :foreground},
+		 {:w, :background},
+		 {:g, :button_shadow}},
+		16, 16, # width x heigth
+		{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #1
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #2
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #3
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #4
+		  0,  0,  0,  0, :g, :g, :g, :g, :g, :g, :g, :g, :g,  0,  0,  0, #5
+		  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #6
+		  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #7
+		  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #8
+		  0,  0,  0,  0, :g, :w, :b, :g, :b, :b, :b, :w, :g,  0,  0,  0, #9
+		  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #10
+		  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #11
+		  0,  0,  0,  0, :g, :w, :w, :w, :w, :w, :w, :w, :g,  0,  0,  0, #12
+		  0,  0,  0,  0, :g, :g, :g, :g, :g, :g, :g, :g, :g,  0,  0,  0, #13
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #14
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, #15
+		  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0})#16
+_endblock
+$

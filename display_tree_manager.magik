@@ -1,0 +1,3003 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+## Denotes if we are busy updating the tree structure, in which
+## case all display updates should be ignored.
+!updating_trees?! << _false
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## The display_tree_manager contains and manages the trees displayed;
+## it knows how to retrieve its children and contains a cache
+## to store them.
+## Top trees are set to have the display_tree_manager as a parent.
+## The manager also contains the selection (of selected
+## display_trees) and communicates changes.
+##
+## Supported properties:
+##  * aspect: where it is made dependent on for its model (data
+##    source); the api-user should specify
+##    data_source.changed(<aspect>) in order to instruct the
+##    display_tree_manager to do:
+##     - no extra argument: redraw the data
+##     - :renew as extra argument: throw away old data and
+##       replace it with freshly retrieved data
+##     - :reresh: retrieve new data, but try to retain the
+##       selection and the expansion state. For this, the
+##       display_trees' keys are used for equality based comparison.
+##     - :data (if P_ARGS[1] contain a new set of
+##       children that will be stored and drawn, if not
+##       specified same as :renew)
+##     - :add (add a new child, P_ARGS are passed
+##       to _self.add_child() function)
+##     - :remove (remove a  child, P_ARGS are passed
+##       to _self.remove_child() function)
+##     - :redraw (redraw all visible display_trees
+##       that are included in P_ARGS[1])
+##     - :redraw_keys (redraw all visible display_trees
+##       that have keys that are included in P_ARGS[1])
+##  * data_source:
+##    Source for objects that we want to display. The manager will
+##    be dependent on its change notification (with <aspect>) to
+##    be notified on changes.
+##  * data_selector:
+##    Objects are retrieved by sending
+##    <data_selector> (defaults to <aspect>) to the data_source.
+##  * display_tree_convertor: A handler, of a method_name that can
+##    be send to the :model property. When invoked, it will be
+##    passed a P_DATUM (object to be turned into a
+##    display_tree) and it should return a display_tree.
+##  * key_equals_proc: A procedure that takes two keys as arguments and returns
+##    wether they are equal. This procedure is used when a
+##    comparison between two keys needs to be made. This is
+##    useful when e.g. records that cannot alway be compared, have
+##    to be compared. In this case, it can be set to
+##    e.g. tree.valid_key_equals_proc. 
+##  * column_visibility_change_notifier:
+##    A handler, of a method_name that can
+##    be send to the :model property. 
+##    This notifier is useful if the display_trees potentially display data
+##    that is very expensive to get. By using :value place_holders
+##    in the styled_string, and only computing the data that gets
+##    displayed (which is made known through this notifier),
+##    behaviour can be optimised for performance.
+##    If specified, this will be invoked for every display_tree
+##    that has been retrieved *before* it gets displayed. It will
+##    also be invoke for every display_tree when the end-user has
+##    changed the column order or the columns that are visible. It
+##    will be passed:
+##    P_TREE: Display tree as it has been retrieved or is known.
+##    P_VISIBILITIES: Vector of column_headings_ids, as they are
+##       currently ordered and visible.
+##    [P_OLD_VISIBILITIES]: Previous vector of old
+##       column_headings_ids, only passed if this has changed.
+##  * filter_value_convertor: A handler that is used to convert
+##    a value that has been specified as a string, into a value
+##    of a certain class. The reason this handler exists is that
+##    the api-user might know better what that class is, and how
+##    the conversion should be done. This handler will be passed:
+##    P_COLUMN_ID: The name of the column
+##    P_VALUE_AS_STRING: The value in string format.
+##    It should return the value (not as string).
+##  * external_sorter: restricted
+##  * external_grouper: restricted
+##  * external_filterer: restricted
+## Restricted properties (at this moment):
+##  * visible_rows
+##  * current_index: Index in .visible_trees of the first one
+##    being displayed for the moment.
+##  * children: All first level display trees displayed.
+##
+def_slotted_exemplar(:display_tree_manager,
+{
+	{:selection,                         _unset  },
+	{:second_level_children?,            _false  },
+	{:current_index,                     1       },
+	{:visible_rows,                      10      }, # used for exporting a page of visible records
+	{:data_source,                       _unset  }, # e.g. a model
+	{:aspect,                            _unset  }, # used for note change
+	{:data_selector,                     _unset  }, # defaults to aspect
+	{:data_cache,                        _unset  }, # comes from data_source + data_selector
+	{:display_tree_convertor,            _unset  }, # converts an element from data_cache into a display tree
+	{:column_visibility_change_notifier, _unset  }, # pre-fetch notifier, send for every display tree when the
+	                                             	# visabilities change (and initially)
+	{:int!visible_columns,               _unset  }, # simple vector containing list of visible column_heading_ids
+	                                                # (i.e. the names of the columns)
+	{:children_cache,                    _unset  }, # comes from data_cache + display_tree_convertor
+	{:data_access_type,                  :indexed}, # one of: {:indexed, :streamed, :elements}
+	{:external_sorter,                   _unset  },
+	{:external_grouper,                  _unset  },
+	{:external_filterer,                 _unset  },
+	{:external_predicate_builder,        _unset  },
+	{:filter_values,                     _unset  },
+	{:filter_value_convertor,            _unset  },
+	{:int!read_stream,                   _unset  },
+	{:int!last_read_index,               _unset  },
+	{:headings_holder,                   _unset  },
+	{:key_equals_proc,                   display_tree.key_equals_proc }
+},
+{:display_tree})
+$
+
+_block
+	# by default, set the key to something that does not disturb
+	# displaying or retrieval
+	display_tree_manager.key << :||
+_endblock
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## A display_tree_selection collection that administers all
+## selected display_trees that have _self (this
+## display_tree_manager) as a root. 
+display_tree_manager.define_slot_access(:selection, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Read only property denoting that self's children that are
+## displayed, have children of their own. This can e.g. be used
+## to decide whether connect-lines between trees need to be drawn.
+display_tree_manager.define_slot_access(:second_level_children?, :readable)
+$
+
+#display_tree_manager.define_slot_access(:data_access_type, :readable)
+#$
+
+_pragma(classify_level=basic, topic={tree_item})
+##  * aspect: where it is made dependent on for its model (data
+##    source); the api-user should specify
+##    data_source.changed(<aspect>) in order to instruct the
+##    display_tree_manager to do:
+##     - no extra argument: redraw the data
+##     - :renew as extra argument: throw away old data and
+##       replace it with freshly retrieved data
+##     - :reresh: retrieve new data, but try to retain the
+##       selection and the expansion state. For this, the
+##       display_trees' keys are used for equality based comparison.
+##     - :data (if P_ARGS[1] contain a new set of
+##       children that will be stored and drawn, if not
+##       specified same as :renew)
+##     - :add (add a new child, P_ARGS are passed
+##       to _self.add_child() function)
+##     - :remove (remove a  child, P_ARGS are passed
+##       to _self.remove_child() function)
+##     - :redraw (redraw all visible display_trees
+##       that are included in P_ARGS[1])
+##     - :redraw_keys (redraw all visible display_trees
+##       that have keys that are included in P_ARGS[1])
+display_tree_manager.define_slot_access(:aspect, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Source for objects that we want to display. The manager will
+## be dependent on its change notification (with <aspect>) to
+## be notified on changes.
+## Objects are retrieved by sending
+## <data_selector> (defaults to <aspect>) to the data_source.
+display_tree_manager.define_slot_access(:data_source, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Objects are retrieved by sending
+## <data_selector> (defaults to <aspect>) to the data_source.
+display_tree_manager.define_slot_access(:data_selector, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## A handler, of a method_name that can
+## be send to the :model property. When invoked, it will be
+## passed a P_DATUM (object to be turned into a
+## display_tree) and it should return a display_tree.
+display_tree_manager.define_slot_access(:display_tree_convertor, :readable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## A handler, of a method_name that can
+## be send to the :model property. 
+## This notifier is useful if the display_trees potentially display data
+## that is very expensive to get. By using :value place_holders
+## in the styled_string, and only computing the data that gets
+## displayed (which is made known through this notifier),
+## behaviour can be optimised for performance.
+##
+## If specified, this will be invoked for every display_tree
+## that has been retrieved *before* it gets displayed. It will
+## also be invoke for every display_tree when the end-user has
+## changed the column order or the columns that are visible. It
+## will be passed:
+## P_TREE: Display tree as it has been retrieved or is known.
+## P_VISIBILITIES: Vector of column_headings_ids, as they are
+##    currently ordered and visible.
+## [P_OLD_VISIBILITIES]: Previous vector of old
+##    column_headings_ids, only passed if this has changed.
+display_tree_manager.define_slot_access(:column_visibility_change_notifier, :writable)
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+## Index in .visible_trees of the first one
+## being displayed for the moment.
+display_tree_manager.define_slot_access(:current_index, :writable)
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+## Number of .visible_trees that are currently shown in a
+## certain windown.
+display_tree_manager.define_slot_access(:visible_rows, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## A procedure that takes two keys as arguments and returns
+## wether they are equal. This procedure is used when a
+## comparison between two keys needs to be made.
+display_tree_manager.define_slot_access(:key_equals_proc, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={external})
+## A handler that is used to sort the data as retrieved from
+## <data_source> by sending <data_selector> to it, before it is
+## converted to display_trees by <display_tree_convertor>.
+##
+## If you want to use a different way of sorting, this is *not*
+## the property to use. Instead, use :column_sort_selectors
+## on :tree_headings_holder. Here you can use a defined order
+## procudure (on sorted_collection) or specify procedures.
+##
+## An external_sorter can be provided to optimise the sorting
+## process: it is not always optimal to convert data into
+## display_trees first.
+## Furthermore, this sorter should be used with care: they
+## should have the same good output as the default sorters, and
+## produce the same orders (otherwise incremental search might fail).
+## The old children (data converted to display_trees) will be
+## invalidated and the selection will be emptied. Otherwise, we
+## would have to search for all the currectly selected, which
+## would likely undo the benefit of the external-sorter.
+##
+## Note that the external sorter is not used for grouping children
+## as well; for that there is an :external_grouper.
+##
+## The external sorter will be passed the following arguments:
+## P_DATA_COL: Collection of data that will be
+##    turned into display_trees. This is the same as has been
+##    retrieved from the data-source.
+## P_ORDER_PROC_OR_NAME: Procedure that
+##    compares two trees, or name of a defined
+##    order_proc on sorted_collection. This
+##    defaults to a procedure that compares the keys of the trees.
+## P_DOWN?: If _true, then the result of
+##    P_ORDER_PROC_OR_NAME will be reversed,
+##    i.e. we will sort descending rather than ascending.
+display_tree_manager.define_slot_access(:external_sorter, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={external})
+## A handler that is used to group the data as retrieved from
+## <data_source> by sending <data_selector> to it, before it is
+## converted to display_trees by <display_tree_convertor>.
+##
+## If you want to use a different way of sorting, this is *not*
+## the property to use. Instead, use :column_sort_selectors
+## on :tree_headings_holder. Here you can use a defined order
+## procudure (on sorted_collection) or specify procedures.
+##
+## An external_grouper can be provided to optimise the grouping
+## process: it is not always optimal to convert data into
+## display_trees first.
+## The old children (data converted to display_trees) will be
+## invalidated and the selection will be emptied. Otherwise, we
+## would have to search for all the currectly selected, which
+## would likely undo the benefit of the external-sorter.
+##
+## The external grouper will be passed the following arguments:
+## P_DATA_COL: Collection of data that will be
+##    turned into display_trees. This is the same as has been
+##    retrieved from the data-source.
+## P_COLUMN_ID: Integer number identifying
+##    column we want to group on.
+## P_COLUMN_HEADING: String denoting the column
+##    heading or the item that has been grouped on.
+##    Note: This may change in future release
+##    to be a styled_string.
+## P_SORT_SELECTOR: Procedure that
+##    compares two trees, or name of a defined
+##    order_proc on sorted_collection. This
+##    defaults to a procedure that compares the keys of the trees.
+##
+display_tree_manager.define_slot_access(:external_grouper, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={external})
+## A handler that is used to filter the data as retrieved from
+## <data_source> by sending <data_selector> to it, before it is
+## converted to display_trees by <display_tree_convertor>.
+##
+## An external_filterer can be provided to optimise the filtering
+## process: it is not always optimal to convert data into
+## display_trees first.
+## Furthermore, this filterer should be used with care: it
+## should have the same good output as the default filters.
+## The old children (data converted to display_trees) will be
+## invalidated and the selection will be emptied. Otherwise, we
+## would have to search for all the currectly selected, which
+## would likely undo the benefit of the external-filterer.
+##
+## The external filterer will be passed the following arguments:
+## P_DATA_COL: Collection of data that will be
+##    turned into display_trees. This is the same as has been
+##    retrieved from the data-source, and has possibly been
+##    reduced by filtering before.
+## P_PREDICATE: A predicate that can be applied
+##    to the current collection of data.
+## [P_INCREMENTAL]: If _true (default), then we can use the
+##    current collection of data (P_DATA_COL). If _false,
+##    the filter result will likely include results that are
+##    not in P_DATA_COL; and thus the new data should be retrieved
+##    by sending <data_selector> to <data_source>.
+display_tree_manager.define_slot_access(:external_filterer, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={external})
+## A handler that is used to create predicates for individual
+## filter parts set on fields.
+##
+## An external predicate builder can be provided to override
+## the default predicate building as done in the
+## display_tree_manager. 
+##
+## The external predicate builder will be passed the following
+## arguments:
+##
+## COLUMN_NR:     The column number of the field the predicate
+##                needs to be set up for
+##
+## FIELD_NAME:    The name of the field the predicate needs to
+##                be set up for.
+##
+## FILTER_VALUE:  The value the predicate needs to be set up
+##                with.
+##
+## OPERATOR_TYPE: Is one of :matches, :equals, :compare.
+##
+## INFO:          Extra information handed over 
+##
+## Should return a predicate for COLUMN_NR (which is column
+## number for FIELD_NAME) which needs to be filtered for
+## entered FILTER_VALUE. OPERATOR_TYPE is one of :matches,
+## :equals, :compare. 
+##
+## In case the operator_type is :compare, the INFO will hold
+## the operator that needs to be used for the comparison.
+##
+## In case the operator_type is :equals the VALUE can be a
+## symbol :any_value_but_unset which denotes any value but
+## unset.
+##
+## NOTE: The handler may return unset in which case default
+## predicate building behaviour will be applied.
+##
+display_tree_manager.define_slot_access(:external_predicate_builder, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={external})
+## A handler that is used to convert a value that has been
+## specified as a string, into a value of a certain class. The
+## reason this handler exists is that the api-user might know
+## better what that class is, and how the conversion should be done.
+##
+## This handler will be passed two parameters:
+## P_COLUMN_ID: The name of the column
+## P_VALUE_AS_STRING: The value in string format.
+## It should return the value (not as string).
+##
+## Note that this is not called for columns that have a
+## formatter with a unit. In that occasion, that unit is used
+## for conversion (so if the default format is in m, but yards
+## are selected, then if the end-user enters just an integer,
+## it will be interpreted as yards, as is the rest of values in
+## this column).
+display_tree_manager.define_slot_access(:filter_value_convertor, :writable)
+$
+
+_pragma(classify_level=restricted)
+##
+## The tree's headings holder
+##
+display_tree_manager.define_slot_access(:headings_holder,:writable,:public)
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+## Contains a list of properties that api-user can set / get on self.
+display_tree_manager.define_shared_constant(:exported_properties,
+	set.new_with(:current_index, :visible_rows, :data_source, :aspect,
+		     :data_selector, :display_tree_convertor, :children, :max_size,
+		     :column_visibility_change_notifier, :key_equals_proc,
+		     :external_sorter, :external_grouper, :external_filterer,
+		     :external_predicate_builder, :filter_value_convertor),
+	:public)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Returns the maximum trees displayed initially when using a
+## streamed data source.
+display_tree_manager.define_shared_constant(:max_displayed_trees, 1000, :public)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Returns the estimated size for a slow collection if we do
+## not want to ask for its real size
+##
+## The size of the list will be re-adjusted each time we
+## approach the end: if there are more records to get, a new
+## estimate is made, if we have got them all, the correct size
+## can be set.
+## 
+## This estimated size should not be too large, since sliding
+## the thumbnail on the scrollbar will have a greater impact
+## when more items are listed. 
+## 
+display_tree_manager.define_shared_constant(:estimated_size_for_slow_col, 200, :public)
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree_manager.new(p_properties)
+	## Parameters    : P_PROPERTIES: Property_list
+	## Returns       : A new instance of display_tree_manager. 
+	## Function      : Create a manager that needs to the parent
+	##                 for all displayed display_trees. It will
+	##                 maintain the selection and communicate (notify) changes.
+	>> _clone.init(p_properties)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_private _method display_tree_manager.init(p_properties)
+	## Parameters    : P_PROPERTIES: Property_list, for contenst
+	##                   see .new() method.
+	## Returns       : Initialised _self
+	## Function      : 
+	## Methodology   : Subclasses overriding this method must call
+	##                 their super implementation.
+	p_properties[:tree_manager] << _self
+	.selection << display_tree_selection.new(p_properties)
+	# ToDo: Do this for all notifiers
+	_local l_model << p_properties[:model].default(p_properties[:data_source])
+	_for i_notifier _over {:column_visibility_change_notifier}.fast_elements()
+	_loop
+		_if ((l_notifier << p_properties[i_notifier]) _isnt _unset)
+		_then
+			p_properties[i_notifier] << handler.check_type(l_notifier, l_model)
+		_endif
+	_endloop
+	# set my properties
+	_local l_my_properties << _self.exported_properties
+	_for i_key, i_value _over p_properties.fast_keys_and_elements()
+	_loop
+		_if l_my_properties.includes?(i_key)
+		_then
+			_self.perform(i_key.with_chevron, i_value)
+		_endif
+	_endloop
+	>> _self 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_manager.data_source << p_new
+	## Parameters    : P_NEW: Source for objects that we want to
+	##                    display. The manager will 
+	##                    be dependent on its change notification
+	##                    (with <aspect>) to be notified on changes.
+	## Returns       : P_NEW
+	## Function      : Decaches children and data_cache, reset
+	##                 dependencies and makes sure next time P_NEW
+	##                 will be used  
+	_self.int!remove_dependencies()
+	.data_source << p_new
+	.children_cache << .data_cache << _unset 
+	_self.int!children?? << _maybe 
+	_self.int!set_dependencies()
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_manager.data_selector << p_new
+	## Parameters    : P_NEW: Objects are retrieved by sending
+	##                    <data_selector> (defaults to <aspect>) to
+	##                    the data_source. 
+	## Returns       : P_NEW
+	## Function      : Decaches children and data_cache, reset
+	##                 dependencies and makes sure next time P_NEW
+	##                 will be used 
+	_self.int!remove_dependencies()
+	.data_selector << p_new
+	.children_cache << .data_cache << _unset 
+	_self.int!children?? << _maybe 
+	_self.int!set_dependencies()
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree_manager.aspect << p_new
+	## Parameters    : P_NEW: where _self will be made dependent on
+	##                    for its data source); the api-user should specify
+	##                    data_source.changed(<aspect>) in order to instruct the
+	##                    display_tree_manager to do:
+	##                     - no extra argument: redraw the data
+	##                     - :renew as extra argument: throw away old data and
+	##                       replace it with freshly retrieved data
+	##                     - :reresh: retrieve new data, but try to retain the
+	##                       selection and the expansion state. For this, the
+	##                       display_trees' keys are used for equality based comparison.
+	##                     - :data (if P_ARGS[1] contain a new set of
+	##                       children that will be stored and drawn, if not
+	##                       specified same as :renew)
+	##                     - :add (add a new child, P_ARGS are passed
+	##                       to _self.add_child() function)
+	##                     - :remove (remove a  child, P_ARGS are passed
+	##                       to _self.remove_child() function)
+	##                     - :redraw (redraw all visible display_trees
+	##                       that are included in P_ARGS[1])
+	##                     - :redraw_keys (redraw all visible display_trees
+	##                       that have keys that are included in P_ARGS[1])
+	## Returns       : P_NEW
+	## Function      : Resets dependencies
+	_self.int!remove_dependencies()
+	.aspect << p_new
+	_self.int!set_dependencies()
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree_manager.display_tree_convertor << p_new
+	## Parameters    : P_NEW: A handler, or a method_name that can
+	##                    be send to the datum that needs to be turned into a
+	##                    display_tree.
+	##                    In both cases it should return a new display_tree.
+	## Returns       : P_NEW
+	## Function      : 
+	.display_tree_convertor << p_new
+	.children_cache << _unset 
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method display_tree_manager.int!set_dependencies()
+	## Makes self dependent on objects / aspects we are interested in:
+	##  * <data_source> / <aspect>
+	_if ((l_data_source << .data_source) _isnt _unset)
+	_then
+		_if ((l_aspect << .aspect.default(.data_selector)) _isnt _unset)
+		_then
+			l_data_source.add_dependent(_self, l_aspect)
+		_endif
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method display_tree_manager.int!remove_dependencies()
+	## Undoes self's dependency on objects / aspects we are interested in:
+	##  * <data_source> / <aspect>
+	_if ((l_data_source << .data_source) _isnt _unset)
+	_then
+		_if ((l_aspect << .aspect.default(.data_selector)) _isnt _unset)
+		_then
+			l_data_source.remove_dependent(_self, l_aspect)
+		_endif
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree_manager.note_change(p_who, p_what, _optional p_value, _gather p_args)
+	## Parameters    : P_WHO: Object that issued the change notification.
+	##                 P_WHAT: The aspect that changed: One of
+	##                  * :column_visibility?: This is internal,
+	##                    and P_VALUE should contain the new order
+	##                    of visible columns 
+	##                  * <aspect> Property set as the aspect
+	##                    (e.g. on creation)
+	##                 P_VALUE: Optional extra argument: One of
+	##                  * :refresh (refresh self's children by
+	##                    sending the data_selector to the
+	##                    data_source, keeping the selection and
+	##                    expansion state where possible)
+	##                  * :renew (refresh self's children by
+	##                    sending the data_selector to the
+	##                    data_source, quick because selection and
+	##                    expansion state are discarded)
+	##                  * _unset (just cause a redraw)
+	##                  * :data (if P_ARGS[1] contain a new set of
+	##                    children that will be stored and drawn, if not
+	##                    specified same as :renew)
+	##                  * :add (add a new child, P_ARGS are passed
+	##                    to _self.add_child() function)
+	##                  * :remove (remove a  child, P_ARGS are passed
+	##                    to _self.remove_child() function)
+	##                  * :redraw (redraw all visible display_trees
+	##                    that are included in P_ARGS[1])
+	##                  * :redraw_keys (redraw all visible display_trees
+	##                    that have keys that are included in P_ARGS[1])
+	## Returns       : 
+	## Function      : React to change notifications.
+	_if (p_what _is .aspect)
+	_then
+		_if (p_value _is :refresh)
+		_then
+			# maintain selection and expansion...
+			_self.refresh_children(_scatter p_args)
+		_elif (p_value _is :renew)
+		_then
+			# do not maintain selection and expansion...
+			_self.renew_children(_scatter p_args)
+		_elif (p_value _is :data)
+		_then
+			# throw away everything...
+			_if ((l_new_data << p_args.an_element()) _is _unset)
+			_then
+				_self.renew_children()
+				_self.changed(:height, _true)
+			_else
+				_self.data << l_new_data
+			_endif
+		_elif (p_value _is :add)
+		_then
+			_self.add_child(_scatter p_args) # tree opt. position
+		_elif (p_value _is :remove)
+		_then
+			_self.remove_child(_scatter p_args) # tree
+		_elif (p_value _is :redraw)
+		_then
+			_self.changed(:height, _scatter p_args)
+		_elif (p_value _is :redraw_keys)
+		_then
+			_self.changed(:height, _self.int!vis_trees_with_keys(_scatter p_args))
+		_else
+			# just redraw
+			_self.changed(:height, _true)
+		_endif
+	_elif (p_what _is :column_visibility?)
+	_then
+		_if (p_value _isnt _unset)
+		_then
+			_self.int!visible_columns << p_value
+		_endif
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method display_tree_manager.data_cache
+	## Parameters    : 
+	## Returns       : Source/collection from which new objects are read,
+	##                 obtained by sending <data_selector> (by
+	##                 default the <aspect> to the <data_source>
+	## Function      : If the data_cache has not been set already,
+	##                 set it now.
+
+	# Only set lock upon writing, allow readers
+	_if ((l_data_cache << .data_cache) _is _unset)
+	_then
+		_self.check_events_thread()
+
+		_lock _self 
+		      _if (l_data_source << .data_source) _is _unset
+		      _then 
+			      l_data_cache << {}
+		      _elif ((l_data_selector << .data_selector.default(.aspect)) _isnt _unset)
+		      _then
+			      l_data_cache << l_data_selector.send_to(l_data_source)
+		      _endif
+		      _self.set_data_cache(l_data_cache << l_data_cache.default({}), _false )
+		_endlock 
+	_endif
+
+	>> l_data_cache
+_endmethod
+$
+
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method display_tree_manager.data_access_type
+	## Parameters    : -
+	## Returns       : Either :streamed, :indexed or :elements.
+	## Function      : Tells how to read from the .data_cache.
+	# make sure the cache is setup
+	_self.data_cache
+	>> .data_access_type
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method display_tree_manager.children_cache
+	## Parameters    : 
+	## Returns       : Rope or sorted_collection that is used to
+	##                 store child trees; but which may be incomplete in case not
+	##                 all children have been retrieved yet.
+	## Function      : Read objects from the .data_cache, convert
+	##                 them into display_trees when necessary by
+	##                 using the <display_tree_convertor>, and
+	##                 cache them for future use.
+
+	_if ((l_children_cache << .children_cache) _is _unset)
+	_then
+		_self.check_events_thread()
+
+		_lock _self
+		      
+		      # we need to check again if there will be children that have children
+		      _self.changed(:second_level_children?, .second_level_children? << _false)
+		      # depending on the type of data we are accessing, we will ask
+		      # for the size, estimate it or maximize it.
+		      _local l_data_cache << _self.data_cache
+		      _local l_size << _if (.data_access_type _is :indexed)
+				       _then >> l_data_cache.size
+				       _elif (_not l_data_cache.responds_to?(:size_is_fast?)) _orif l_data_cache.size_is_fast?
+				       _then >> l_data_cache.size.min(_self.max_displayed_trees)
+				       _else >> _self.estimated_size_for_slow_col
+				       _endif
+		      .int!nr_expanded_subtrees << l_size
+		      _if (.display_tree_convertor _is :yourself) _andif
+			  (rope.is_class_of?(l_data_cache) _orif sorted_collection.is_class_of?(l_data_cache))
+		      _then
+			      # this is ideal: we already have a list that is ready
+			      l_children_cache << l_data_cache
+			      _for i_child _over l_children_cache.fast_elements()
+			      _loop
+				      _self.int!fill_cache(i_child)
+			      _endloop
+		      _else
+			      l_children_cache << rope.new(l_size)
+		      _endif
+		      
+		      _self.int!children?? << (l_size _isnt 0)
+		      .children_cache << l_children_cache
+		      
+		      _if l_children_cache _isnt l_data_cache
+		      _then
+			      # Start filling the cache to force checks for expansion
+			      # Don't try and read all the children right away or else we'll
+			      # break the data bucketing code.
+			      _for i _over 1.upto(l_size)
+			      _loop
+				      _self.int!nth_child(i)
+				      _if .int!nr_expanded_subtrees >= _self.max_displayed_trees
+				      _then
+					      _leave
+				      _endif
+			      _endloop
+			      
+			      _if .data_access_type _is :streamed _andif l_size _is 0
+			      _then
+				      _self.changed(:all_records_found, l_size)
+			      _endif
+		      _endif
+		      
+		      _if (!updating_trees?! _isnt _true)
+		      _then
+			      _self.changed(:height, _true)
+		      _endif
+		_endlock
+	_endif
+
+	>> l_children_cache
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method display_tree_manager.int!nr_expanded_subtrees << p_new
+	## Parameters    : P_NEW: The total number of children (and
+	##                    their children) and is shown below self.
+	## Returns       : P_NEW
+	## Function      : Set the new number of subtrees below self
+	##                 that is expanded. If it changes, we should cause a :height
+	##                 change notification to update dependents (e.g. a window)
+	_local l_old << .int!nr_expanded_subtrees ^<< p_new
+	_if l_old <> p_new
+	_then
+		_self.selection.int!decache_row_indices()
+		_self.notify_changed()
+	_endif
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method display_tree_manager.int!nr_expanded_subtrees ^<< p_new
+	## Parameters    : P_NEW: The total number of children (and
+	##                    their children) and is shown below self.
+	## Returns       : Old value
+	## Function      : Set the new number of subtrees below self
+	##                 that is expanded. If it changes, we should cause a :height
+	##                 change notification to update dependents (e.g. a window)
+	_local l_old << .int!nr_expanded_subtrees
+	_self.int!nr_expanded_subtrees << p_new
+	>> l_old
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method display_tree_manager.int!fill_cache(p_new_child)
+	## Parameters    : P_NEW_CHILD: A display_tree that is to be
+	##                    made part of self's structure.
+	## Returns       : P_NEW_CHILD
+	## Function      : Set, _self as a parent and maintain internal invariants.
+	_self.int!new_child(p_new_child)
+	# do tree_mixin.int!add()
+	p_new_child.int!parent << _self
+	# do display_tree.int!add(), but do not add self's position since we are already there
+	_self.int!update_parent(p_new_child.int!nr_expanded_subtrees, p_new_child, :fill_cache)
+	# it is handy (even expected in some places) that the child is returned
+	>> p_new_child
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal, subclassable})
+_method display_tree_manager.int!add(p_new_child)
+	## Parameters    : P_NEW_CHILD: A display_tree that is to be
+	##                    made part of self's structure, added to
+	##                    the end.
+	## Returns       : 
+	## Function      : Sets parent of P_NEW_CHILD to _self;
+	##                 may be subclassed but should call original
+	_self.int!new_child(p_new_child)
+	>> _super.int!add(p_new_child)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal, subclassable})
+_private _method display_tree_manager.int!new_child(p_new_child)
+	## Parameters    : P_NEW_CHILD: A display_tree that will be
+	##                    made part of self's structure.
+	## Returns       : -
+	## Function      : Check on :second_level_children? (whether we
+	##                 maintain children that have children of
+	##                 their own) and do a column_visibity_change
+	##                 notify for each new child
+	# check for children (so we know if this is just a list)
+	_if (_not .second_level_children?) _andif p_new_child.children?
+	_then
+		_self.changed(:second_level_children?, .second_level_children? << _true)
+	_endif
+	# now it is going to be in the cache notify which fields we may use
+	_self.notify_column_visibility_change(p_new_child)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method display_tree_manager.int!update_parent(p_extra_children, p_child, p_what, _optional p_arg)
+	## Parameters    : P_EXTRA_CHILDREN: Total number of children
+	##                    that is involved with P_CHILD's change
+	##                 P_CHILD: New tree that is the cause of change
+	##                 P_WHAT: The thing that changed, either one of
+	##                    :fill_cache, :add, :remove, :selection, :expansion
+	##                    at this level.
+	##                 [P_ARG]: Optional extra argument; used in
+	##                    conjunction with :selection, denoting P_CHILD new selection.
+	## Returns       : -
+	## Function      : 1) Manages self's selection to contain
+	##                    P_CHILD's selected trees.
+	##                 2) Updates .second_level_children? if
+	##                    P_CHILD has children and we were not
+	##                    aware of any so far.
+	##                 3) Updates .int!nr_expanded_subtrees to keep
+	##                    a correct expansion state; does not call super.
+	# take appropriate measures...
+	_if (p_what _is :fill_cache)
+	_then
+		# add selection
+		_for i_sel_tree _over p_child.fast_selected_trees()
+		_loop
+			_self.selection.int!add(i_sel_tree)
+		_endloop
+	_elif (p_what _is :add)
+	_then
+		# check if the newly added child belongs to the second (or higher) level
+		# (note that it is tested already by int!add (and int!new_child) whether the new child might have children)
+		_if (_not .second_level_children?) _andif (p_child.parent _isnt _self)
+		_then
+			_self.changed(:second_level_children?, .second_level_children? << _true)
+		_endif
+		# add selection
+		_for i_sel_tree _over p_child.fast_selected_trees()
+		_loop
+			_self.selection.int!add(i_sel_tree)
+		_endloop
+	_elif (p_what _is :remove)
+	_then
+		# add selection
+		_for i_sel_tree _over p_child.fast_selected_trees()
+		_loop
+			_self.selection.int!remove(i_sel_tree)
+		_endloop
+	_elif (p_what _is :selection)
+	_then
+		_if (p_arg _isnt _unset) _andif (p_arg _isnt _false)
+		_then
+			_self.selection.add(p_child, p_arg)
+		_else
+			_self.selection.remove(p_child)
+		_endif
+	_elif (p_what _is :expansion)
+	_then
+	_endif
+	# the display tree itself maintains that collapsed children are never selected
+	_self.int!nr_expanded_subtrees +<< p_extra_children
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+## If .data_access_type _is :elements, i.e. we retrieve /
+## convert children by using .fast_elements(); then we will
+## retrieve .cache_bucked_size everytime we invoke it.
+display_tree_manager.define_shared_constant(:cache_bucked_size, 100, :private)
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method display_tree_manager.int!nth_child(p_index)
+        ## Parameters    : P_INDEX
+        ## Returns       : A display tree, which on the P_INDEX'th
+        ##                 position in self's children.
+        ## Function      : Gets the p_index'th child from the data_cache
+        ## Methodology   : This function is not allowed to be called it
+        ##                 P_INDEX is already in the children_cache.
+	##                 This method is used internally by int!nth_child()
+	##                 which is the thread-safe wrapper that should
+	##                 be used for filling the nth child. This method
+	##                 itself is not thread safe.
+        _dynamic !updating_trees?! << _true
+	_local l_new << _unset 
+
+	_self.check_events_thread()
+
+	_lock _self
+	      _local l_children_cache << .children_cache
+	      _if ((l_data_access_type << .data_access_type) _is :streamed)
+	      _then
+		      _if ((l_read_stream << .int!read_stream) _is _unset)
+		      _then
+			      # l_new just stays as _unset
+		      _else 
+			      _local l_index << .int!last_read_index
+			      
+			      #
+			      # We may be about to do a slow query within the lock. If it
+			      # looks likely, mark the thread as "slow" so the vents thread
+			      # doesn't get blocked.
+			      #
+			      thread_orig_name << _if l_read_stream.responds_to?(:size_is_fast?) _andif
+						      _not l_read_stream.size_is_fast?
+						  _then >> _thisthread.name
+						  _endif 
+			      _protect
+				      _if thread_orig_name _isnt _unset
+				      _then _thisthread.set_name(thread_orig_name+"(slow thread)")
+				      _endif 
+				      _loop
+					      # check if we have found the right index
+					      _if (l_index >= p_index)
+					      _then
+						      # check for size, and remove read_stream for the last...
+						      _if (.int!nr_expanded_subtrees = p_index)
+						      _then
+							      _if (l_read_stream.peek() _is _unset)
+							      _then
+								      # close read stream
+								      _self.int!close_read_stream()
+								      _self.changed(:all_records_found,l_index)
+							      _else
+								      # add the next bucket of estimated new records
+								      _local l_inc << _self.estimated_size_for_slow_col
+								      l_children_cache.add_all_last(simple_vector.new(l_inc))
+								      .int!nr_expanded_subtrees +<< l_inc
+								      _self.changed(:height, _true)
+							      _endif
+						      _endif
+						      _leave
+					      _else
+						      _if (l_datum << l_read_stream.get()) _is _unset
+						      _then
+							      # close read stream
+							      _self.int!close_read_stream()
+							      _self.changed(:all_records_found,l_index)
+							      # apparently, our data cache has shrunk in the meanwhile, or
+							      # our size was just an estimate
+							      .int!nr_expanded_subtrees -<< (l_children_cache.size - l_index)
+							      .children_cache << l_children_cache.subseq(1, l_index)
+							      # this may cause an error, we did not find our p_index 'ed element
+							      _self.changed(:height, _true)
+							      _leave
+						      _endif
+						      # we might be getting l_index < p_index, whcih
+						      l_index+<<1
+						      .int!last_read_index+<<1
+						      _if ((l_new << l_children_cache[l_index]) _is _unset)
+						      _then
+							      _self.int!fill_cache(l_children_cache[l_index] <<
+										   l_new <<
+										   _self.convert_to_display_tree(l_datum))
+						      _endif
+					      _endif
+				      _endloop
+			      _protection
+				      _if thread_orig_name _isnt _unset
+				      _then _thisthread.set_name(thread_orig_name)
+				      _endif
+			      _endprotect 
+		      _endif
+	      _elif (l_data_access_type _is :indexed)
+	      _then
+		      # This is the easiest and fastest way: we can use an index to
+		      # get the datum we want and convert it to a display tree
+		      l_new << _self.int!fill_cache(l_children_cache[p_index] << _self.convert_to_display_tree(.data_cache[p_index]))
+	      _else # (.data_access_type _is :elements)
+		      # get a batch of elements 
+		      _local l_index << 0, l_end << p_index + _self.cache_bucked_size - 1
+		      _for i_datum _over .data_cache.fast_elements()
+		      _loop
+			      _if ((l_index +<< 1) >= p_index)
+			      _then
+				      # check if the cache does not contain this yet
+				      _if (l_children_cache[l_index] _is _unset)
+				      _then
+#					      .int!nr_expanded_subtrees -<< 1
+					      _self.int!fill_cache(l_children_cache[l_index] << _self.convert_to_display_tree(i_datum))
+				      _endif
+				      _if l_index = l_end _then _leave _endif
+			      _endif
+		      _endloop
+		      l_new << l_children_cache[p_index]
+	      _endif
+	_endlock
+	_return l_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={internal})
+_method display_tree_manager.convert_to_display_tree(p_datum)
+	## Parameters    : P_DATUM: Object that needs to be turned into
+	##                    a display tree.
+	## Returns       : A display tree.
+	## Function      : Check if we have a display_tree_convertor.
+	##                 If not, use display_tree.new_from()
+	##                 If we do, check if it is a .handler
+	## Methodology   :
+	# ToDo: May be we have a general styled_string to apply, or
+	#       something like that with as style_sheet
+	>> _if ((l_display_tree_convertor << .display_tree_convertor) _is _unset)
+	   _then >> display_tree.new_from(p_datum)
+	   _elif handler.is_class_of?(l_display_tree_convertor)
+	   _then >> l_display_tree_convertor.invoke(p_datum)
+	   _else >> l_display_tree_convertor.send_to(p_datum)
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_manager.expanded?
+	## Parameters    : -
+	## Returns       : _true as soon as we have children, since we
+	##                 will always be expanded,
+	##                 _false otherwise
+	## Function      : Implement super classes behaviour
+	>> _self.children?
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_manager.expanded? << p_expanded?
+	## Parameters    : P_EXPANDED?: _true if we want _self to be
+	##                    expanded, which it is as long as there are children,
+	##                    _false if we want _self to be collapsed,
+	##                    which can only be realised by discarding self's children.
+	## Returns       : P_EXPANDED?
+	## Function      : Implement super classes behaviour
+	_if _not p_expanded?
+	_then
+		_self.children << {}
+	_endif
+	>> p_expanded?
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_manager.data << p_new
+	## Parameters    : P_NEW: A collection
+	## Returns       : P_NEW
+	## Function      : Sets the first level elements of self to be P_NEW.
+	##                 They will be converted with .display_tree_convertor if specified.
+	##                 This specifies another way of obtaining
+	##                 data: *not* with <data_source>.<data_selector>, but set it directly.
+	##                 (Still, model and aspect can be used to
+	##                 notify certain changes)
+	# ToDo: Disable the use of <data_source>
+	_self.set_data_cache(p_new, true)
+	_self.changed(:height, _true)
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_manager.data
+	## Parameters    : -
+	## Returns       : A source of objects to be display as has
+	##                 been set with .data<<
+	## Function      : 
+	>> _self.data_cache
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_manager.set_children(p_collection, _optional p_message, _gather p_args)
+	## Parameters    : P_COLLECTION: Source for retrieving children;
+	##                    If P_MESSAGE is not supplied, this should supply
+	##                    elements that inherit from tree_mixin;
+	##                    Else it should understand .size and .fast_elements()
+	##                 [P_MESSAGE:] This message will be used as a
+	##                    display_tree_convertor on elements of P_COLLECTION.
+	##                    Thus it should return a styled_string;
+	##                    If unset, it is determined just in time,
+	##                    to be either :yourself, or :|as_display_tree()|
+	##                 {P_ARGS} Arguments for P_MESSAGE
+	## Returns       : 
+	## Function      : Set the children for later usage;
+	##                 If this protocol is used, then the
+	##                 .data_source will be disabled
+	## Methodology   : 
+	_self.data << p_collection
+	.display_tree_convertor << _if p_args.empty?
+				   _then >> p_message.default(:yourself)
+				   _else >> {p_message, _scatter p_args}
+				   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_manager.set_children_method(l_generator_object, l_generator_method, _gather l_generator_args)
+	#
+	# Author         : GE Smallworld (ken)
+	# Date           : Jul/1998
+	#
+	## Parameters    : L_GENERATOR_OBJECT: The object to which a
+	##                    L_GENERATOR_METHOD will be send.
+	##                 L_GENERATOR_METHOD: The message that will
+	##                    yield a collection of children.
+	##                    As a second result, a boolean denoting
+	##                    whether the children are cached or not may be returned.
+	##                    The default is _true.
+	##                 L_GENERATOR_ARGS:   Arguments passed to the
+	##                    invocation of L_GENERATOR_METHOD.
+	## Returns       : -
+	## Function      : To set a method to obtain children only when
+	##                 they are really needed. This way activation
+	##                 of menus can be sped up greatly, since computation has been
+	##                 made lazy.
+	##                 Note that computation can be sped up even
+	##                 more to set tree.children? to _true 
+	##                 if is known that this tree does have children. (After invoking the
+	##                 method .set_children_method().)
+	##                 Equally, tree.children? can be
+	##                 set to _false when it is known that the current tree element
+	##                 does not have children. (In the latter case,
+	##                 the method .set_children_method() does not need
+	##                 to be invoked of course.)
+	## Methodology   : It stores the creation parameters, which
+	##                 will be used for the first retrieval of the description.
+	##                 Futhermore, this sets .int!children?? to maybe;
+	##                 since at this stage it is not know if self has children.
+	## Tip           : If the children need to be sorted when they
+	##                 are retrieved, use .sort_children() after
+	##                 calling this method. The sorting is 
+	##                 delayed till the time the children are actually retrieved.
+	_local l_children << l_generator_object.perform_with_vector(l_generator_method, l_generator_args)
+	_self.set_children(l_children)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_manager.children << p_new
+	## Parameters    : P_NEW: A collection
+	## Returns       : P_NEW
+	## Function      : Sets the children of self to be P_NEW.
+	## Methodology   : Cached approach
+	_self.set_children(p_new)
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_manager.children?
+	## Parameters    : 
+	## Returns       : _true if _self has children, _false if not.
+	## Function      : Provide boolean method to check for children,
+	>> _not _self.children_cache.empty?
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_manager.children
+	## Parameters    : 
+	## Returns       : The "children" of a tree, i.el the one level lower trees
+	##                 that are attached to this tree (self) is
+	##                 attached. In this backstop method, a new
+	##                 rope is created with all children in it.
+	##                 The children should always be a rope or a sorted collection.
+	## Function      : 
+	l_result << simple_vector.new(_self.children_cache.size) 
+	_for i_child, i_child_index _over _self.fast_children()
+	_loop
+		l_result[i_child_index] << i_child
+	_endloop
+	>> l_result
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree_manager.number_of_children
+	## Parameters    : 
+	## Returns       : The number of children attached to this tree.
+	## Function      : 
+	>> _self.children_cache.size
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_iter _method display_tree_manager.fast_children(_optional p_index)
+	## Parameters    : 
+	## Returns       : Iterations of the children of this tree.
+	## Function      : Loop over children.
+	## Methodology   : Use this function if the children will not be modified.
+	_for i_child, i_child_index _over _self.int!fast_cached_children(p_index)
+	_loop
+		_local l_child << _if (i_child _is _unset) _then >> _self.int!nth_child(i_child_index) _else >> i_child _endif
+		# this should never occur, but just in case
+		_if (l_child _is _unset) _then _return _endif
+		_loopbody(l_child, i_child_index)
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_iter _method display_tree_manager.fast_range_of_visible_trees(p_tree_a, p_tree_b, _optional p_start_index)
+	## Parameters    : P_TREE_A, P_TREE_B: One of the trees will
+	##                    mark the first tree to be delivered, from then on all
+	##                    visible trees will be returned, and then the other tree will
+	##                    mark the end
+	##                 [P_START_INDEX]: if known, this can provide
+	##                    a quick index to skip a lot of trees before the checking begins.
+	## Returns       : Iterations of visible trees that fall in the
+	##                 range [P_TREE_A, P_TREE_B] or [P_TREE_B, P_TREE_A]
+	## Function      : Loops over .fast_visible_trees() and starts
+	##                 returning the trees that fall in the range denoted by
+	##                 P_TREE_A and P_TREE_B; i.e. after one of those has been
+	##                 encountered, the same result is returned as
+	##                 .fast_visible_trees(), until the other is encountered.
+	## Methodology   : Comparison is done based on identity
+	# check if there is a real range
+	_if (p_tree_a _is p_tree_b) _then _return _loopbody (p_tree_a) _endif
+	# start real thing
+	_local l_started? << _false
+	_for i_tree _over _self.fast_visible_trees(p_start_index)
+	_loop
+		_if l_started?
+		_then
+			_loopbody (i_tree)
+			_if i_tree _is l_end_child _then _return _endif
+		_elif (i_tree _is p_tree_a)
+		_then
+			_loopbody (i_tree)
+			l_started? << _true; l_check_start? << _false 
+			l_end_child << p_tree_b
+		_elif (i_tree _is p_tree_b)
+		_then 
+			_loopbody (i_tree)
+			l_started? << _true; l_check_start? << _false 
+			l_end_child << p_tree_a
+		_endif
+	_endloop 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_iter _method display_tree_manager.int!fast_cached_children(_optional p_index)
+	## Parameters    : [P_INDEX]: Integer denoting the 'row' from
+	##                    which we want to start
+	##                    iterating. Defaults to 1.
+	## Returns       : Iterations of known children together with
+	##                 their index. If a child is not known, _unset
+	##                 will be iterated, but the index will be as normal.
+	## Function      : 
+	# only yield children currently not known
+	
+	 _self.check_events_thread()
+
+	_lock _self
+	      l_children_cache << _self.children_cache
+	      _for i_child_index _over range(p_index.default(1), l_children_cache.size)
+	      _loop
+		      _loopbody(l_children_cache[i_child_index], i_child_index)
+	      _endloop
+	_endlock
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_manager.nth_child(p_position)
+	# Author: . . . Ken Korsmit
+	# Date written: 20/11/1996
+	#
+	## Parameters:  P_POSITION: The position of the child that is
+	##                 requested in the list of children.
+	## Returns:     The child that is stored on the
+	##              "p_position"st position in the list of children.
+	## Function:    If the child is not present in the cache yet,
+	##              obtain it now.
+	>> _if ((l_child << _self.children_cache[p_position]) _isnt _unset)
+	   _then >> l_child
+	   _else >> _self.int!nth_child(p_position)
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_manager.nth_tree(p_position)
+	## Parameters    : P_POSITION: The position of the child that is
+	##                 requested in the list of visible trees.
+	## Returns       : The child that is stored on the
+	##                 "p_position"st position in the list of visible trees.
+	## Function      : If the child is not present in the cache yet,
+	##                 obtain it now.
+	_for i_tree, i_index _over _self.fast_visible_trees(p_position)
+	_loop
+		_return (i_tree, i_index)
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_manager.index_of_child(p_child)
+	## Parameters    : P_CHILD: A tree that is possibly one of
+	##                    self's children.
+	## Returns       : An index (integer) of P_CHILD's position in
+	##                 self's children.
+	## Function      : 
+	## Methodology   : An identity match is done over self's cached
+	##                 children (i.e. only children that have been retrieved
+	##                 already; which is quite reasonable, since ones that need
+	##                 conversion cannot be indentical)
+	_for i_child, i_index _over _self.int!fast_cached_children()
+	_loop
+		_if (i_child _is p_child)
+		_then
+			_return i_index
+		_endif
+	_endloop
+	>> _unset 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_manager.index_of_tree(p_tree)
+	## Parameters    : P_CHILD: A tree that is possibly one of
+	##                    self's visible trees.
+	## Returns       : An index (integer) of P_CHILD's position in
+	##                 self's list of visible trees.
+	## Function      : 
+	## Methodology   : An identity match is done over self's visible
+	##                 trees
+	_for i_tree, i_index _over _self.fast_visible_trees(.children_cache.index_of(p_tree.parent_at_level(2)))
+	_loop
+		_if (i_tree _is p_tree)
+		_then
+			_return i_index
+		_endif
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_iter _method display_tree_manager.fast_trees()
+	## Parameters    : [Iterator return value]: If _false is passed as a
+	##                 result of the loop calling this iterator, 
+	##                 it does not process the children of the _loopbody variable
+	##                 just passed.
+	## Returns       : First all self's children, then repeat this
+	##                 for the first child, and that one's children,etc.
+	##                 Note self is not returned.
+	## Function      : This differs from depth first since first
+	##                 *all* self's children are checked before examining the first
+	##                 child's children.
+	## Conditions    : Might thow :recursive_tree
+	_for i_child _over _self.fast_children()
+	_loop
+		_for i_subtree _over i_child.fast_trees()
+		_loop
+			>> _loopbody (i_subtree)
+		_endloop
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_iter _method display_tree_manager.fast_current_trees(_optional p_index)
+	## Parameters    : [Iterator return value]: If _false is passed as a
+	##                 result of the loop calling this iterator, 
+	##                 it does not process the children of the _loopbody variable
+	##                 just passed.
+	## Returns       : _self, then all its currently known children, then repeat this
+	##                 for the first child, and that one's children,etc.
+	## Function      : This differs from depth first since first
+	##                 *all* self's currently known children are checked before examining the first
+	##                 child's currently known children.
+	## Conditions    : Might thow :recursive_tree
+	_local l_current_children << rope.new()
+	_local l_second_level_children? << .second_level_children?
+	_for i_child _over _self.int!fast_cached_children(p_index)
+	_loop
+		_if (i_child _isnt _unset)
+		_then
+			_if (_loopbody(i_child) _isnt _false) _andif l_second_level_children?
+			_then
+				l_current_children.add(i_child)
+			_endif 
+		_endif
+	_endloop
+	# check if there is anyting expanded
+	_if _not l_second_level_children? _then _return _endif
+	_for i_child _over l_current_children.fast_elements()
+	_loop
+		_for i_subtree _over i_child.fast_current_trees()
+		_loop
+			>> _loopbody (i_subtree)
+		_endloop
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method display_tree_manager.int!first_child
+	## Parameters    : 
+	## Returns       : The first of self's children,
+	##                 _unset otherwise
+	## Function      : 
+	>> _self.children_cache[1]
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method display_tree_manager.int!last_child
+	## Parameters    : 
+	## Returns       : The last of self's children,
+	##                 _unset otherwise
+	## Function      : 
+	>> _self.children_cache[_self.number_of_children]
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method display_tree_manager.int!fast_start_index(p_start_index)
+	## Parameters    : P_START_INDEX: An index in the list of
+	##                    visible trees we want to start
+	##                    iterating with.
+	## Returns       : A suitable index to start iterating with.
+	## Function      : Check if there are expanded children, if so,
+	##                 we have to process those.
+	# May be improved on later
+	# Check if there is anything expanded
+	>> _if (_self.number_of_children = .int!nr_expanded_subtrees)
+	   _then
+		   # we can start directly at the row, nothing is in between
+		   >> p_start_index
+	   _else
+		   # return the first index used by the cache
+		   >> _self.children_cache.lwb
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_iter _method display_tree_manager.fast_visibilities_and_trees(_optional p_start_index)
+	## Parameters    : [P_START_INDEX]: An index in the list of
+	##                    expanded trees we want to start
+	##                    iterating with.
+	## Returns       : 1) Yields the visible children etc. starting at
+	##                    P_START_INDEX (defaults to .current_index)
+	##                    Only children that are visible are yielded,
+	##                    i.e. their parent should be expanded
+	##                 2) As a second iterator result, it is returned
+	##                    wether this tree is visible (boolean) or
+	##                    that its index is below P_START_INDEX.
+	##                 3) The index of (1)
+	## Function      : Quickly start iterating at P_START_INDEX
+	p_start_index << p_start_index.default(.current_index)
+	_local l_do_not_check? << _false 
+	_local l_index << _self.int!fast_start_index(p_start_index << p_start_index.default(1))
+	_for i_child, i_child_index _over _self.int!fast_cached_children(l_index)
+	_loop
+		# check if we have to yield them all
+		_if l_do_not_check? _orif (l_index = p_start_index)
+		_then
+			_local l_child << _if (i_child _is _unset)
+					  _then >> _self.int!nth_child(i_child_index)
+					  _else >> i_child
+					  _endif
+			# this should never occur...
+			_if (l_child _is _unset) _then _return _endif
+			# from now on, we will yield the children
+			l_do_not_check? << _true
+			_for i_tree _over l_child.fast_visible_trees()
+			_loop
+				_loopbody (_true, i_tree, l_index +^<< 1)
+			_endloop
+		# check if we can skip them all
+		_elif (i_child _is _unset)
+		_then
+			# it has not even retrieved yet, so it cannot be expanded
+			l_index +<< 1
+		_elif (p_start_index > (l_index + (l_nr_expanded_subtrees << i_child.int!nr_expanded_subtrees)))
+		_then
+			# yes, but take notice we did skip the tree and its expanded children
+			l_index +<< (1 + l_nr_expanded_subtrees)
+		_else 
+			# no, we have to check the individual expanded trees
+			_for i_tree _over i_child.fast_visible_trees()
+			_loop
+				_if (l_index = p_start_index) 
+				_then
+					l_do_not_check? << _true
+				_endif
+				_loopbody (l_do_not_check?, i_tree, l_index +^<< 1)
+				# check if we can skip all i_tree's children
+				>> _if (p_start_index > (l_index + (l_nr_expanded_subtrees << i_tree.int!nr_expanded_subtrees)))
+				   _then
+					   # yes, but take notice we did skip the expanded trees
+					   l_index +<< l_nr_expanded_subtrees
+					   # skip children of i_tree
+					   >> _false
+				   _endif
+			_endloop
+		_endif
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_iter _method display_tree_manager.fast_visible_trees(_optional p_start_index)
+	## Parameters    : [P_START_INDEX]: An index in the list of
+	##                    expanded trees we want to start
+	##                    iterating with.
+	##                 [Iterator return value]: If _false is passed a
+	##                 result of the loop calling this iterator, 
+	##                 it does not process the children of the _loopbody variable
+	##                 just passed.
+	## Returns       : Yields the visible children etc. starting at
+	##                 P_START_INDEX (defaults to 1)
+	##                 Only children that are visible are yielded,
+	##                 i.e. their parent should be expanded .
+	##                 Secondly, the index in the complete list is returned.
+	## Function      : 
+	_if (p_start_index _is _unset)
+	_then
+		_local l_index << 0
+		_for i_child, i_child_index _over _self.fast_children()
+		_loop
+			_for i_tree _over i_child.fast_visible_trees()
+			_loop
+				_loopbody (i_tree, l_index +<< 1)
+			_endloop
+		_endloop
+	_else 
+		_for i_visible?, i_tree, i_index _over _self.fast_visibilities_and_trees(p_start_index)
+		_loop
+			_if i_visible?
+			_then
+				_loopbody (i_tree, i_index)
+			_endif
+		_endloop
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_iter _method display_tree_manager.fast_selected_trees()
+	## Parameters    : [Iterator return value]: If _false is passed a
+	##                 result of the loop calling this iterator, 
+	##                 it does not process the children of the _loopbody variable
+	##                 just passed.
+	## Returns       : Iterations in a depth first way of trees
+	##                 that are selected.
+	##                 As a secondly iter result, the index in the
+	##                 complete list is returned.
+	## Function      : 
+	_for i_child, i_index _over _self.int!fast_cached_children()
+	_loop
+		# selected trees will always be in the cache
+		_if (i_child _is _unset) _then _continue _endif
+		_local l_index << i_index
+		_for i_tree _over i_child.fast_visible_trees()
+		_loop
+			l_index +<< 1
+			_if i_tree.selected?
+			_then
+				# check if api user has passed an iterator return value. If so,
+				# take it into account and pass it to the inner loop, that also
+				# accepts these.
+				_if (_loopbody (i_tree, l_index) _is _false)
+				_then
+					# we'll skip all the children
+					l_index +<< i_tree.int!nr_expanded_subtrees
+					_continue _with _false 
+				_endif
+			_endif
+		_endloop
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree_manager.refresh_children()
+	## Parameters    : -
+	## Returns       : -
+	## Function      : If possible, refresh self's children from
+	##                 the data source (in which case the method
+	##                 .refresh_children() will *not* be sent to
+	##                 these new children). Selection and
+	##                 expanstion state will be retained for
+	##                 children that have the same key (using key_equals_proc).
+	##                 For other children, selection and expansion
+	##                 will retrieved from the data-source.
+	##                 If no data source if known, each known child
+	##                 will be refreshed in it's own right (by
+	##                 sending the method .refresh_children() to it).
+	##                 This can pickup changes for 'lazy children'.
+	## Methodology   : This method can be slow in the latter
+	##                 situation, or in the first situation in case trees that are
+	##                 selected and expanded have disappeared (i.e. all new trees
+	##                 need to be checked).
+	# things now selected may change, block until we are finished
+
+	l_old_handling_change? << (l_selection << _self.selection).hold_notify_selection()
+	_block @updating
+		_dynamic !updating_trees?! << _true
+		# check if we have a data source
+		_if ((l_data_selector << .data_selector.default(.aspect)) _isnt _unset) _andif
+		    ((l_data_source << .data_source) _isnt _unset)
+		_then
+			# check if there is anything to refresh
+			_if ((.data_cache ^<< _unset) _is _unset) _orif (.children_cache _is _unset) _then _leave @updating _endif
+			# find children we want to retain
+			_for i_old_child, i_index _over _self.int!fast_cached_children()
+			_loop
+				# note that a sub child can not be selected if the child isnt expanded
+				_if (i_old_child _isnt _unset)
+				_then
+					# 'i_old_child.detach()' would give a problem since it removes
+					# the child from the list, therefore we call a restricted method
+					i_old_child.int!parent << _unset
+				_endif
+			_endloop
+			# now empty children caches...
+			_local l_old_children << .children_cache ^<< _unset
+			_for i_index, i_old_child _over l_old_children.keys_and_elements_in_reverse()
+			_loop
+				_if (i_old_child _is _unset)
+				_then
+					# we have processed this child
+					l_old_children.remove_nth(i_index)
+				_endif
+			_endloop
+			# refill caches after emptying selection (they will cause a
+			# changed notification that may reset the tree_item's scrollbar; by having
+			# the selection set, we will not scroll); anyway, the tree_item
+			# can figure out itself by checking the dynamic !updating_trees?!.
+			# empty selection
+			l_selection.empty(_false)
+			_local l_equals_proc << _self.key_equals_proc
+			# use normal access to children, which calls _self.int!nth_child() when appropriate
+			_for i_new_child _over _self.fast_children()
+			_loop @copy
+				_local l_key << i_new_child.key
+				# check if we can find the old child
+				_for i_index, i_old_child _over l_old_children.fast_keys_and_elements()
+				_loop
+					_if l_equals_proc(i_old_child.key, l_key)
+					_then
+						_if (i_new_child _isnt i_old_child)
+						_then
+							i_new_child.copy_expansion_and_selection(i_old_child)
+						_elif i_new_child.selected?
+						_then 
+							# mark this child as being selected again
+							l_selection.add(i_new_child, i_new_child.int!selection)
+						_endif
+						# we have processed this child
+						l_old_children.remove_nth(i_index)
+						_if l_old_children.empty? _then _leave @copy _endif
+						_leave
+					_endif
+				_endloop
+			_endloop
+		_else
+			# just refresh current children
+			_for i_child _over _self.int!fast_cached_children()
+			_loop
+				_if (i_child _isnt _unset)
+				_then
+					i_child.refresh_children()
+				_endif 
+			_endloop
+		_endif
+
+		# access children cache; this will cause a change notification the first time...
+		_self.children_cache
+		_self.changed(:data,:post_change)
+	_endblock
+	
+	# check if we are part of a bigger change AND if we did change anything
+	_local l_sel_changes? << l_selection.change_notification_on_hold?
+	_self.changed(:height, _true)
+	# check if we are part of a bigger change AND if we did change anything
+	_if l_sel_changes?
+	_then
+		l_selection.notify_selection(_unset, _unset, l_old_handling_change?)
+	_else
+		l_selection.cancel_notify_selection()
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree_manager.renew_children()
+	## Parameters    : -
+	## Returns       : -
+	## Function      : Throws away all current children *if* we can
+	##                 obtain news ones from the <data_source>. No
+	##                 selection or expansion state is retained.
+	##                 If no data source if known, each known child
+	##                 will be refreshed in it's own right (by
+	##                 sending the method .refresh_children() to it).
+	##                 This can pickup changes for 'lazy children'.
+	## Methodology   : This method can be slow in the latter situation.
+	_self.int!renew_children(_true, _true)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree_manager.show_on(p_stream)
+	## Parameters    : P_STREAM: A write stream.
+	## Returns       : -
+	## Function      : Show self's name and size of visible trees list.
+	p_stream.write(_self.class_name, "[1-", .int!nr_expanded_subtrees, %])
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method display_tree_manager.number_of_visible_trees
+	## Parameters    : -
+	## Returns       : The number of trees that are - given the
+	##                 current expansion state - visible.
+	## Function      : 
+	# make sure children have been invoked at least once
+	_self.children_cache
+	>> .int!nr_expanded_subtrees
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method display_tree_manager.int!lookup_in_children(p_key)
+	## Parameters    : P_KEY: Key that is sought, belonging to a subtree.
+	##                 P_ALLOCATING? 
+	## Returns       : 1) Tree:  Tree that has been found, unset if
+	##                    none found.
+	##                 2) Found: Boolean, true or false
+	##                 3) Index: Position of Tree found in Tree's
+	##                    children, unset if not found.
+	## Function      : 
+	## Methodology   : Check cached children
+	_local l_equals_proc << _self.key_equals_proc
+	_for i_child, i_index _over _self.int!fast_cached_children()
+	_loop
+		_if l_equals_proc(i_child.key, p_key)
+		_then
+			_return (i_child, _true, i_index)
+		_endif
+	_endloop
+	>> (_unset, _false, _unset)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree_manager.add_child(p_new_child, _optional p_position)
+	## Parameters    : P_NEW_CHILD: Child to add
+	##                 [P_POSITION]: Where to add in the list of children;
+	##                    Neglected for sorted children;
+	##                    Defaults to the position of the previous
+	##                    child that has the same key.
+	## Returns       : The added child P_NEW_CHILD
+	## Function      : Add P_NEW_CHILD to self's children;
+	##                 If a child with P_NEW_CHILD.key is already present,
+	##                 it will be removed.
+	##                 Updates parent settings.
+	## Methodology   :
+	_local (l_old_child, l_found?, l_index) << _self.remove_child(p_new_child)
+	_if _not l_found? _then p_new_child.detach() _endif
+	_local l_children_cache << _self.children_cache
+	_if ((l_index << p_position.default(l_index)) _is _unset) _orif
+	    # test that user does not try to position in sorted collection
+	    l_children_cache.is_class_of?(sorted_collection) 
+	_then
+		l_children_cache.add(p_new_child)
+	_else
+		l_children_cache.add_nth(p_new_child, l_index)
+	_endif
+	# ... and in this occasion, int!add will not add on too many
+	_self.int!add(p_new_child)
+	>> p_new_child
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree_manager.remove_nth_child(p_index)
+	## Parameters    : P_INDEX: Index of child to remove
+	## Returns       : 1) Child with under index P_INDEX;
+	##                 2) _true if succeeded, _false otherwise;
+	##                 3) Position of 1) in children
+	## Function      : Remove child under index P_INDEX from children;
+	##                 Updates parent settings.
+	## Methodology   :
+	# check if children has been initialised
+	_if ((l_children_cache << .children_cache) _is _unset) _then _return (_unset, _false, p_index) _endif
+	_local l_old_child << l_children_cache.remove_nth(p_index)
+	_local l_found? << (l_old_child _isnt _unset)
+	_if l_found?
+	_then
+		# ... and in this occasion, int!remove will not remove on too much
+		_self.int!remove(l_old_child)
+	_endif
+	>> (l_old_child, l_found?, p_index)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method display_tree_manager.notify_column_visibility_change(p_tree, _optional p_old_visible_columns)
+	## Parameters    : P_TREE: A known display tree. The
+	##                    <column_visibility_change_notifier> will
+	##                    be sent to this tree *and* all its
+	##                    currently known subtrees. 
+	##                 [P_OLD_VISIBLE_COLUMNS]: Previous vector of old
+	##                    column_headings_ids, only passed if this has changed.
+	## Returns       : - 
+	## Function      : Send <column_visibility_change_notifier> to P_TREE *and* all its
+	##                 currently known subtrees *before* they get displayed. It
+	##                 will be passed:
+	##                 P_TREE: Display tree as it has been retrieved or is known.
+	##                 P_VISIBILITIES: Vector of column_headings_ids, as they are
+	##                    currently ordered and visible.
+	##                 [P_OLD_VISIBILITIES]: Previous vector of old
+	##                    column_headings_ids, only passed if this has changed.
+	##
+	## This notifier is useful if the display_trees potentially display data
+	## that is very expensive to get. By using :value place_holders
+	## in the styled_string, and only computing the data that gets
+	## displayed (which is made known through this notifier),
+	## behaviour can be optimised for performance.
+	_if ((l_column_visibility_change_notifier << .column_visibility_change_notifier) _isnt _unset) _andif
+	    ((l_int!visible_columns << .int!visible_columns) _isnt _unset)
+	_then
+		_for i_tree _over p_tree.fast_current_trees()
+		_loop
+			l_column_visibility_change_notifier.invoke(i_tree, l_int!visible_columns, p_old_visible_columns)
+		_endloop
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method display_tree_manager.int!visible_columns << p_new_visible_columns
+	## Parameters    : P_NEW_VISIBLE_COLUMNS: Vector of new
+	##                    column_headings_ids, to be checked for change.
+	## Returns       : P_NEW_VISIBLE_COLUMNS
+	## Function      : Check P_NEW_VISIBLE_COLUMNS against the
+	##                 previously given (and iternally stored)
+	##                 visible columns. If there is a different
+	## Methodology   :
+
+	_if ((l_old_visible_columns << .int!visible_columns) _is _unset) _orif
+	    (l_old_visible_columns.size <> p_new_visible_columns.size) _orif
+	    _for i_vis_col _over p_new_visible_columns.fast_elements()
+	    _loop _if _not l_old_visible_columns.includes?(i_vis_col) _then _leave _with _true _endif
+	    _finally >> _false 
+	    _endloop
+	_then
+		.int!visible_columns << p_new_visible_columns
+		# notify all cached trees
+		_if (.column_visibility_change_notifier _isnt _unset)
+		_then
+			# since order does not matter, optimise for speed; only update the cached and currently known ones
+			_for i_tree _over _self.fast_current_trees()
+			_loop
+				_self.notify_column_visibility_change(i_tree, l_old_visible_columns)
+			_endloop
+		_endif 
+		_self.changed(:column_headings)
+	_endif
+	>> p_new_visible_columns
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method display_tree_manager.post_mortem()
+	## Parameters    : -
+	## Returns       : -
+	## Function      : If present, closes internal read_stream,
+	##                 makes sure we do not do any more data retrievals, and tell
+	##                 we do not have any more post mortem processing to do.
+	_self.selection.pre_select_notifier << _unset 
+	_self.selection.select_notifier << _unset 
+	_self.selection.empty(_false)
+	_self.data << {}
+	_self.int!close_read_stream()
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree_manager.sort_children(_optional p_order_proc_or_name, p_down?)
+	## Parameters    : [P_ORDER_PROC_OR_NAME]: Procedure that
+	##                    compares two trees, or name of a defined
+	##                    order_proc on sorted_collection. This
+	##                    defaults to a procedure that compares the keys of the trees.
+	##                 [P_DOWN?]: If _true, then the result of
+	##                    P_ORDER_PROC_OR_NAME will be reversed,
+	##                    i.e. we will sort descending rather than ascending.
+	## Returns       : -
+	## Function      : Sorts self's children, or store the sorter
+	##                 to be used when lazy children are retrieved.
+	_if _not _self.int!ext_sort_children(p_order_proc_or_name, p_down?)
+	_then
+		# check input
+		p_order_proc_or_name << _self.int!check_sorter(p_order_proc_or_name, p_down?)
+		# get all our children
+		_self.ensure_all_children()
+		# sort 'm
+		.children_cache << sorted_collection.new_from(.children_cache, p_order_proc_or_name)
+	_endif
+	# decache and notify
+	_self.selection.int!decache_row_indices()
+	_self.notify_changed()
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method display_tree_manager.notify_changed()
+	## Parameters    : -
+	## Returns       : -
+	## Function      : Cause a :height change notification that
+	##                 will cause a redraw, unless !updating_trees?! is _true, in
+	##                 which case nothing is done.
+	_if (!updating_trees?! _isnt _true)
+	_then
+		_self.changed(:height, _true)
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={external})
+_method display_tree_manager.group_children(p_column_id, p_column_heading, p_sort_selector, _optional p_ungroup_first?)
+	## Parameters    : P_COLUMN_ID: Integer number identifying
+	##                    column we want to group on.
+	##                 P_COLUMN_HEADING: String denoting the column
+	##                    heading or the item that has been grouped on.
+	##                    Note: This may change in future release
+	##                    to be a styled_string.
+	##                 P_SORT_SELECTOR: Procedure that
+	##                    compares two trees, or name of a defined
+	##                    order_proc on sorted_collection. This
+	##                    defaults to a procedure that compares the keys of the trees.
+	##                 P_UNGROUP_FIRST?: If _true, the next first
+	##                    level of trees will be removed to do the 'ungrouping'.
+	## Returns       : -
+	## Function      : Introduce a new level of display_trees at
+	##                 the first level, that group the current
+	##                 first level trees on P_COLUMN_ID. The new
+	##                 'grouping' trees will have styled_string
+	##                 that merges columns and contains P_COLUMN_HEADING.
+	##                 The P_SORT_SELECTOR is used to group similar
+	##                 trees: When _maybe is returned they are
+	##                 considered to go into the same group.
+	##                 P_UNGROUP_FIRST? will denote that there is a level of
+	##                 grouping trees that has to be removed first.
+	_if _self.int!ext_group_children(p_column_id, p_column_heading, p_sort_selector) _then _return _endif 
+	# get rope of detached children
+	_if (p_ungroup_first? _isnt _true)
+	_then
+		# get all our children
+		_self.ensure_all_children()
+		_for i_child _over _self.fast_children()
+		_loop
+			i_child.int!parent << _unset
+		_endloop
+		l_children << .children_cache
+	_else
+		l_children << _self.int!ungroup_children()		
+	_endif
+	# get sorter
+	p_sort_selector << _self.int!check_sorter(p_sort_selector, _false)
+	# create groups
+	_local l_grouped_children << rope.new()
+	_for i_old_child _over l_children.fast_elements()
+	_loop
+		# find a position for this child
+		_for i_index, i_group_child _over l_grouped_children.fast_keys_and_elements()
+		_loop
+			# compare with example of group
+			_local l_result?? << p_sort_selector(i_group_child.int!first_child, i_old_child)
+			_if (l_result?? _is _maybe)
+			_then
+				# the same, so we have the right group
+				l_new_group << i_group_child
+				_leave 
+			_elif l_result??
+			_then
+				# our value is smaller than any we came across sofar
+				# (since the smallest is the first)
+				l_new_group << i_old_child.shallow_copy()
+				l_new_group.int!selection << _false
+				l_new_group.styled_string << styled_string.new(:merge, _unset, p_column_heading,
+					_scatter i_old_child.styled_string.slice(p_column_id, p_column_id))
+				# insert new group, before current one
+				l_grouped_children.add_nth(l_new_group, i_index)
+				_leave 
+			_endif
+		_finally
+			# our value is larger than any we now sofar
+			l_new_group << i_old_child.shallow_copy()
+			l_new_group.int!selection << _false
+			l_new_group.styled_string << styled_string.new(:merge, _unset, p_column_heading,
+					_scatter i_old_child.styled_string.slice(p_column_id, p_column_id))
+			# insert new group, before current one
+			l_grouped_children.add(l_new_group)
+		_endloop
+		# add to new group, after
+		l_new_group.add_child(i_old_child, _unset, _true)
+	_endloop
+	# expand all
+	_for i_group_child _over l_grouped_children.fast_elements()
+	_loop
+		i_group_child.expanded? << _true
+		i_group_child.int!parent << _self 
+	_endloop
+	# set groups to be current children
+	_if _not .second_level_children?
+	_then
+		_self.changed(:second_level_children?, .second_level_children? << _true)
+	_endif
+	.int!nr_expanded_subtrees +<< l_grouped_children.size
+	.children_cache << l_grouped_children
+	_self.notify_changed()
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method display_tree_manager.int!ungroup_children()
+	## Parameters    : -
+	## Returns       : Rope of new children.
+	## Function      : Discards self's first level of children,
+	##                 supposedly 'grouping trees'.
+	_local l_new_children << rope.new_for(.int!nr_expanded_subtrees - _self.number_of_children)
+	_for i_group_child _over _self.fast_children()
+	_loop
+		_for i_child _over i_group_child.fast_children()
+		_loop
+			i_child.int!parent << _unset
+			l_new_children.add(i_child)
+		_endloop
+		i_group_child.int!parent << _unset 
+		i_group_child.children << {}
+	_endloop
+	_self.selection.remove_all(.children_cache ^<< _unset)
+	# Setting .int!nr_expanded_subtrees here doesn't match the
+	# current state, but it gets fixed up by the calling code (and
+	# the calling code expects it to match the number of expanded
+	# trees in l_new_children).
+	.int!nr_expanded_subtrees << l_new_children.size
+	>> l_new_children
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={external})
+_method display_tree_manager.ungroup_children()
+	## Parameters    : -
+	## Returns       : -
+	## Function      : Discards self's first level of children,
+	##                 supposedly 'grouping trees'; reset
+	##                 properties and notify the changes.
+
+	# Note: Code that did the ungrouping by hand has been removed.
+	
+	# ungrouping in the normal way might be very slow, since it
+	# will probably be a bad moment to start realising sub-children
+	_self.renew_children()
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method display_tree_manager.int!vis_trees_with_keys(p_keys)
+	## Find and return set of trees in visible area that have keys P_KEYS.
+	p_keys  << equality_set.new_from(p_keys)
+	_local l_changed_trees << set.new()
+	_local l_nrs_to_do << p_keys.size
+	_local l_max << .current_index + .visible_rows
+	_for i_display_tree, i_index _over _self.fast_visible_trees(.current_index)
+	_loop
+		_if (i_index > l_max)
+		_then
+			_leave
+		_elif p_keys.includes?(i_display_tree.key)
+		_then
+			l_changed_trees.add(i_display_tree)
+			_if ((l_nrs_to_do -<< 1) _is 0)
+			_then
+				_leave 
+			_endif
+		_endif
+	_endloop
+	>> l_changed_trees
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={internal})
+_method display_tree_manager.ensure_all_children()
+	## Make sure the complete children cache is filled.
+	_self.children_cache
+	_if (.data_access_type _is :streamed)
+	_then
+		# get children till we do not shrink or expand anymore
+		_if (.int!read_stream _isnt _unset)
+		_then
+			_local l_index << .int!last_read_index
+			_loop _if _self.int!nth_child(l_index +<< 1) _is _unset _then _leave _endif _endloop
+		_endif
+	_else 
+		_over _self.fast_children() _loop _endloop
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method display_tree_manager.int!close_read_stream()
+	## If we have a read stream, close it and unmark ourselves for
+	## the post mortem when garbage collecting takes place.
+	# check if we have an open read-stream, and close it
+	_if (.int!read_stream _isnt _unset)
+	_then
+		.int!read_stream.close()
+		_self.have_post_mortem(_false)	
+		.int!read_stream << .int!last_read_index << _unset 
+	_endif 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method display_tree_manager.int!ext_sort_children(p_order_proc_or_name, p_down?)
+	## Parameters    : [P_ORDER_PROC_OR_NAME]: Procedure that
+	##                    compares two trees, or name of a defined
+	##                    order_proc on sorted_collection. This
+	##                    defaults to a procedure that compares the keys of the trees.
+	##                 [P_DOWN?]: If _true, then the result of
+	##                    P_ORDER_PROC_OR_NAME will be reversed,
+	##                    i.e. we will sort descending rather than ascending.
+	## Returns       : -
+	## Function      : Sort children using .external_sorter.
+	##                 Only to be used by .sort_children()
+	_local l_success? << _false 
+	_if (.external_sorter _isnt unset) 
+	_then
+		_dynamic !updating_trees?! << _true
+		_local l_new << .external_sorter.invoke(_self.data_cache, p_order_proc_or_name, p_down?)
+		_if (l_new _isnt _unset)
+		_then
+			# very likely, our children have become invalid and should be discarded
+			# we have to refresh the selection; best is to empty it
+			# otherwise we might undo the advantage of the external sorting
+			_self.int!data_cache << l_new
+			l_success? << _true 	
+
+			#
+			# It is quite likely that having ordered the data we know how
+			# much we have, so take the opportunity to broadcast the size.
+			#
+			_if .data_access_type _is :streamed _andif
+			    l_new.responds_to?(:size_is_fast?) _andif
+			    l_new.size_is_fast?
+			_then _self.changed(:all_records_found, l_new.size)
+			_endif 
+		_endif
+	_endif
+	>> l_success?
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method display_tree_manager.int!data_cache << p_new
+	## Parameters    : P_NEW: New collection to be used as a data cache.
+	## Returns       : P_NEW
+	## Function      : Set and initialise the data_cache, depending
+	##                 attributes, and way we are going to read data from it.
+	##                 This method does the same as .int!data_cache << p_new,
+	##                 but does not do set any dynamics nor does it
+	##                 do notification.
+	# empty selection
+	_self.selection.empty(_false)
+	# remove all previous stuff
+	.data_cache << p_new
+	.children_cache << _unset
+	_self.int!children?? << _maybe 
+	.current_index << 1
+	.int!nr_expanded_subtrees << 0
+	# check if we have an open read-stream, and close it
+	_self.int!close_read_stream()
+	# find best way of getting children
+	.data_access_type << _if rope.is_class_of?(p_new) _orif sorted_collection.is_class_of?(p_new) _orif simple_vector.is_class_of?(p_new)
+			     _then
+			     	     >> :indexed
+			     _elif p_new.responds_to?(:|persistent_read_stream()|)
+			     _then
+				     # print(p_new)
+				     _self.have_post_mortem(_true)	
+				     .int!read_stream << p_new.persistent_read_stream()
+				     .int!last_read_index << 0
+				     >> :streamed
+			     _elif p_new.responds_to?(:|read_stream()|)
+			     _then
+				     # print(p_new)
+				     _self.have_post_mortem(_true)	
+				     .int!read_stream << p_new.read_stream()
+				     .int!last_read_index << 0
+				     >> :streamed
+			     _elif p_new.responds_to?(:|fast_elements()|)
+			     _then
+				     >> :elements
+			     _else
+				     >> condition.raise(:error, :string, "No appropriate data source/selector has been set - supply a collection/method")
+			     _endif
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method display_tree_manager.int!ext_group_children(p_column_id, p_column_heading, p_sort_selector)
+	## Group children using .external_sorter.
+	## Only to be used by .group_children()
+	_if (.external_grouper _is unset) _then _return _false _endif
+	_block
+		_dynamic !updating_trees?! << _true
+		_local l_new_children << .external_grouper.invoke(_self.data_cache, p_column_id, p_column_heading, p_sort_selector)
+		_if (l_new_children _is _unset) _then _return _false _endif 
+		# our children have become invalid and should be discarded
+		# we have to refresh the selection; best is to empty it
+		# otherwise we might undo the advantage of the external sorting
+		#	_self.int!data_cache << l_new_children
+		# check if we have an open read-stream, and close it
+		_self.int!close_read_stream()
+		# store new children
+		.children_cache << l_new_children
+		_self.int!children?? << ((.int!nr_expanded_subtrees << l_new_children.size) _isnt 0)
+		# empty selection
+		_self.selection.empty(_false)
+		# notify there is new data (controls may re-adjust and redraw on this)
+		#	_self.changed(:data)
+		# we assume there there are children
+		_self.changed(:second_level_children?, .second_level_children? << _true)
+		_for i_child _over l_new_children.fast_elements()
+		_loop
+			_self.int!fill_cache(i_child)
+		_endloop
+	_endblock
+	_self.notify_changed()
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_manager.filter_values
+	## Parameters    : -
+	## Returns       : Vector with data used for filtering.
+	## Function      : Creat this vector when needed, initialise
+	##                 self's .value accordingly.
+	_if ((l_fvs << .filter_values) _is _unset)
+	_then
+		.filter_values << l_fvs << simple_vector.new(_self.headings_holder.number_of_columns)
+		.value << simple_vector.new(l_fvs.size)
+	_endif
+	>> l_fvs
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_manager.clear_filter(p_column_nr)
+	## Parameters    : P_COLUMN_NR: Integer denoting a valid column.
+	## Returns       : -
+	## Function      : If a filter has been set for P_COLUMN_NR, it
+	##                 will be cleared, and if necessary, new data will be
+	##                 retrieved to show the new state. 
+	# check if there is a change
+	_if (_self.filter_values[p_column_nr] _is _unset)
+	_then
+		_return 
+	_endif
+	# clear matches string filter
+	_self.value(p_column_nr) << 
+	_self.filter_values[p_column_nr] << 
+	.int!styled_string << _unset
+	# restore children
+	_self.int!apply_filter()
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_private _method display_tree_manager.int!renew_children(p_notify?, _optional p_remove_filter?)
+	## Parameters    : P_NOTIFY?: If _true and we succeeded in
+	##                    renewing, we'll do a changed :data notification.
+	##                 [P_REMOVE_FILTER?]: If _true then
+	##                    the older filter data is removed. If
+	##                    _false, then the current filter remains -
+	##                    if any. 
+	## Returns       : -
+	## Function      : Throws away all current children *if* we can
+	##                 obtain news ones from the <data_source>. No
+	##                 selection or expansion state is retained.
+	##                 If no data source if known, we'll try to
+	##                 regenerate the children, from the datacache.
+	##                 each known child
+	##                 will be refreshed in it's own right (by
+	##                 sending the method .refresh_children() to it).
+	##                 This can pickup changes for 'lazy children'.
+	## Methodology   : This method can be slow in the latter situation.
+	_dynamic !updating_trees?! << _true
+	# check if we have a data source
+	_if ((l_data_selector << .data_selector.default(.aspect)) _isnt _unset) _andif
+	    ((l_data_source << .data_source) _isnt _unset)
+	_then
+		# check if there is anything to refresh
+		_if ((.data_cache ^<< _unset) _is _unset) _orif ((.children_cache ^<< _unset) _is _unset)
+		_then
+			# there was no data
+		_else
+			# empty selection
+			_self.selection.empty(_false)
+			!updating_trees?! << _false 
+		_endif
+		# ask for the new data now, and store it
+		_local l_data_cache << l_data_selector.send_to(l_data_source).default({})
+		_self.set_data_cache(.data_cache << l_data_cache, p_remove_filter?)
+	_elif ((l_data_source << .data_cache) _isnt _unset)
+	_then
+		# empty selection
+		_self.selection.empty()
+		# we cannot ask a data_source for new data by sending the .data_selector
+		# let's reuse the data cache
+		_self.set_data_cache(l_data_source, p_remove_filter?)
+		!updating_trees?! << _false 
+	_else 
+		_self.refresh_children()
+	_endif
+	# just telling the data changed should be enough;
+	# dependents may decide they want a redraw or the like
+	_if p_notify?
+	_then
+		_self.changed(:data,:post_change)
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_manager.set_equals_value_filter(p_column_nr, p_string, p_value_id, p_value)
+	## Parameters    : P_COLUMN_NR: Integer denoting a valid column.
+	##                 P_STRING: String from which P_VALUE has been
+	##                    derived, used for showing which filter is active.
+	##                 P_VALUE_ID: Id of column in P_COLUMN_NR,
+	##                    will be used to retrieve values with from
+	##                    display trees and build a predicate with in
+	##                    case an external_filterer is used.
+	##                 P_VALUE: The value that we are looking for;
+	##                    only data/children for which
+	##                    .value(P_VALUE_ID) = P_VALUE will be left.
+	## Returns       : -
+	## Function      : Build a equals filter predicate, set it in
+	##                 the filter values and apply it.
+	##                 Note that it will be checked if this is a
+	##                 refinement, and if so, the filter will be
+	##                 applied incrementally rather than
+	##                 retrieving all data/children again.
+	# check if there is a change
+	_if ((l_old_filter << _self.filter_values[p_column_nr]) _isnt _unset) _andif (l_old_filter[2] = p_string)
+	_then
+		_return 
+	_endif
+	# store filter
+	_local l_value << p_value
+
+	_if .external_predicate_builder _isnt _unset
+	_then
+		l_p << .external_predicate_builder.invoke( p_column_nr, p_value_id, p_value, :equals )
+	_elif (.external_filterer _is _unset)
+	_then
+		_if (l_invert? << (p_value _is :any_value_but_unset)) _then l_value << _unset _endif
+		l_p << predicate.using(_proc @equals_value_in_column (p_display_tree)
+					       _import p_value_id, l_value
+					       >> (p_display_tree.value(p_value_id) = l_value)
+				       _endproc)
+		_if l_invert? _then l_p << l_p.not _endif
+	_endif
+
+	_if l_p _is _unset 
+	_then		
+		l_p << _if (p_value _is :any_value_but_unset)
+		       _then >> predicate.isnt_null(p_value_id)
+		       _else >> predicate.eq(p_value_id, l_value)
+		       _endif
+	_endif
+	_self.filter_values[p_column_nr] << {:equals, p_string, l_p, p_value_id, p_value}
+	_self.value(p_column_nr) << p_value
+	.int!styled_string << _unset
+	# apply filter, and check if we can incrementally refine
+	_local l_incremental? << (l_old_filter _is _unset)
+	_if _not l_incremental? _then l_p << _unset _endif
+	_self.int!apply_filter(l_p)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_manager.clear_all_filters()
+	## Parameters    : -
+	## Returns       : -
+	## Function      : If filters have been set, then they will be
+	##                 cleared, and if necessary, new data will be
+	##                 retrieved to show the new state. 
+	_local l_needs_clearing? << _false
+	_if ((l_fvs << .filter_values) _is _unset) _then _return _false _endif
+	_for i_fnr, i_filter_value _over l_fvs.fast_keys_and_elements()
+	_loop
+		_if (i_filter_value _isnt _unset)
+		_then
+			# clear filter
+			l_fvs[i_fnr] << _unset
+			l_needs_clearing? << _true 
+		_endif
+	_endloop
+	_if l_needs_clearing?
+	_then
+		_self.int!apply_filter()
+	_endif
+	.filter_values << _unset 
+	.int!styled_string << _unset
+	>> l_needs_clearing?
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_method display_tree_manager.default_styled_string
+	## Parameters    : -
+	## Returns       : A styled_string or a collection that is
+	##                 suitable to be turned into one.
+	## Function      : Create a styled_string...
+	##                 For this, the filter values will be used.
+	# we may initialise style here: rope.new_with(:emphasis)
+	_local l_out << rope.new_with(:align, :left)
+	_local l_first? << _true
+	_local l_nfm << string_styles_holder.message(:no_filter_set)
+	_for i_column_nr, i_filter_value _over _self.filter_values.fast_keys_and_elements()
+	_loop
+		_if l_first?
+		_then
+			l_first? << _false
+		_else
+			l_out.add(:tab_left)
+		_endif
+		_if (i_filter_value _is _unset)
+		_then
+			l_out.add(:disabled)
+			l_out.add(l_nfm)
+		_else
+			l_out.add(:image)
+			l_out.add({:browse, :ui_resources})
+			l_out.add(:no_space)
+			l_out.add(:default)
+			l_out.add(i_filter_value[2])
+		_endif
+	_endloop
+	>> l_out
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_private _method display_tree_manager.value << p_new_value
+	## Parameters    : P_NEW_VALUE: New value we want to store on self.
+	## Returns       : P_NEW_VALUE
+	## Function      : Set P_NEW_VALUE in self's value slot, unless
+	##                 a handler has been specified with .set_value_method(), in
+	##                 which case the 'setter' will called with P_NEW_VALUE.
+	>> _super.value << p_new_value
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_private _method display_tree_manager.set_value_method(p_value_holder, p_get_method, _optional p_set_method)
+	## Parameters    : P_VALUE_HOLDER: The object to which
+	##                    l_get_method and l_set_method will be send.
+	##                 P_GET_METHOD: The message to send to
+	##                    P_VALUE_HOLDER to get a value;
+	##                    an index (possibly unset) and _self will be
+	##                    passed as arguments;
+	##                    An index will be passed e.g. when _self's
+	##                    style_string uses multiple values.
+	##                    This method may return 1) any value.
+	##                    As a second return value 2), it may return
+	##                    :image, to denote that (1) refers to an
+	##                    image; of a text_style name, which will
+	##                    be used when drawing (1) 
+	##                 [P_SET_METHOD]: The message to send to
+	##                    P_VALUE_HOLDER to set a new value;
+	##                    the new value, an index (possibly unset),
+	##                    and _self will be passed as arguments
+	## Returns       : The new handler that has been created and
+	##                 that will work as a setter and getter at the same time.
+	## Function      : Create a handler that will call P_GET_METHOD
+	##                 when a value needs to be retrieved, and
+	##                 P_SET_METHOD when a new value needs to be set.
+	##                 Both P_SET_METHOD and P_GET_METHOD will be
+	##                 send to P_VALUE_HOLDER, when invoked.
+	>> _super.set_value_method(p_value_holder, p_get_method, p_set_method)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_manager.set_matches_string_filter(p_column_nr, p_filter_str, p_value_id)
+	## Parameters    : P_COLUMN_NR: Integer denoting a valid column.
+	##                 P_FILTER_STR: String to be applied as a wild card pattern.
+	##                 P_VALUE_ID: Id of column in P_COLUMN_NR,
+	##                    will be used to build a predicate with in case an
+	##                    external_filterer is used.
+	## Returns       : -
+	## Function      : Build a matches filter predicate, set it in
+	##                 the filter values and apply it.
+	##                 Note that it will be checked if this is a
+	##                 refinement, and if so, the filter will be
+	##                 applied incrementally rather than
+	##                 retrieving all data/children again.
+	# check if there is a change
+	_if ((l_old_filter << _self.filter_values[p_column_nr]) _isnt _unset) _andif (l_old_filter[2] = p_filter_str)
+	_then
+		_return 
+	_endif
+	# get old filter
+	l_old_filter << _if (l_old_filter _isnt _unset) _andif (l_old_filter[1] _is :matches) _then >> l_old_filter[2] _endif
+	# store filter
+	_if .external_predicate_builder _isnt _unset
+	_then
+		l_p << .external_predicate_builder.invoke( p_column_nr, p_value_id, p_filter_str, :matches )
+	_elif (.external_filterer _is _unset)
+	_then
+		p_filter_str << p_filter_str.canonical
+		l_p << predicate.using(_proc @match_string_in_column (p_display_tree)
+					       _import p_column_nr, p_filter_str
+					       >> p_display_tree.matches?(p_filter_str, p_column_nr)
+				       _endproc)
+	_endif
+
+	_if l_p _is _unset 
+	_then		
+		l_p << predicate.wild(p_value_id, p_filter_str)
+	_endif
+	
+	_self.filter_values[p_column_nr] << {:matches, p_filter_str, l_p, p_column_nr, p_filter_str}
+	_self.value(p_column_nr) << p_filter_str
+	.int!styled_string << _unset
+	# apply filter, and check if we can incrementally refine
+	_local l_incremental? << (l_old_filter _is _unset) _orif p_filter_str.matches?(l_old_filter)
+	_if _not l_incremental? _then l_p << _unset _endif
+	_self.int!apply_filter(l_p)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_private _method display_tree_manager.value(p_index) << p_new_value
+	## Parameters    : P_NEW_VALUE: New value we want to store on self.
+	##                 P_INDEX: An index that will be known to the
+	##                    collection stored as self's value, and under
+	##                    which P_NEW_VALUE will be stored in that collection.
+	## Returns       : P_NEW_VALUE
+	## Function      : Store P_NEW_VALUE under P_INDEX in the
+	##                 collection that is in 's value slot, unless
+	##                 a handler has been specified with .set_value_method(), in
+	##                 which case the 'setter' will called with
+	##                 P_NEW_VALUE and P_INDEX.
+	>> _super.value(p_index) << p_new_value
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_manager.int!apply_filter(_optional p_pred)
+	## Parameters    : [P_PRED]: If specified, we only have to
+	##                    apply this predicate to the current data / children.
+	##                    If not specified, a combined predicate is
+	##                    created from all filters, and applied to
+	##                    the original data / children. 
+	## Returns       : - 
+	## Function      : Build a predicate if necessary (if P_PRED is
+	##                 not supplied), and applies this to the
+	##                 current / original data / children.
+	##                 If an external_filterer is supplied, this
+	##                 will be called to execute the filter
+	##                 predicate on the data (before conversion to
+	##                 display trees). If not, then the predicate
+	##                 will be applied to self's children.
+	# build predicate
+	_if _not (l_incremental? << (p_pred _isnt _unset))
+	_then
+		_for i_filter_value _over (l_fvs << _self.filter_values).fast_elements()
+		_loop
+			_if (i_filter_value _is _unset) _then _continue _endif
+			_if (p_pred _is _unset)
+			_then
+				p_pred << i_filter_value[3]
+			_elif (i_filter_value[1] _is :matches)
+			_then 
+				# equal predicates should evaluate first
+				p_pred << p_pred.and(i_filter_value[3])
+			_else 
+				p_pred << i_filter_value[3].and(p_pred)
+			_endif
+		_endloop
+	_endif
+	# check if we can apply filters externallly
+	_if (.external_filterer _isnt _unset)
+	_then
+		_block
+			_dynamic !updating_trees?! << _true
+			# very likely, our children have become invalid and should be discarded
+			# we have to refresh the selection; best is to empty it
+			# otherwise we might undo the advantage of the external sorting
+			_self.int!data_cache << .external_filterer.invoke(_self.data_cache, p_pred, l_incremental?)
+		_endblock
+		# we do still have filtering turned on  (possibly with no filter values though)
+		_self.changed(:filtering?, _true)
+		_self.changed( :data, :post_change )
+		_return 
+	_endif
+	# ensure we apply the predicate to the right children
+	_if l_incremental?
+	_then
+		# we want to filter the existing children
+		_self.ensure_all_children()
+	_else
+		# we want to fetch all children again
+		_self.int!renew_children(_false, _false)
+		# do we have a predicate?
+		_if (p_pred _is _unset)
+		_then
+			# access new children, which might do a refresh if necessary;
+			# we are still filtering (with an no filter values though)
+			_self.changed(:filtering?, _true)
+			_self.changed( :data, :post_change )
+			_return 
+		_endif
+		_self.ensure_all_children()
+		# if - during the 'changed data' notification - someone
+		# retrieved self's styled string, it will be set incorrectly
+		.int!styled_string << _unset 
+	_endif
+	# loop over children
+	_local l_old_handling_change? << (l_selection << _self.selection).hold_notify_selection()
+	_block
+		_dynamic !updating_trees?! << _true
+		l_selection.empty(_false)
+		_local l_new_children << rope.new()
+		l_size << 0
+		_for i_child _over _self.fast_children()
+		_loop
+			_if p_pred.test?(i_child)
+			_then
+				l_new_children.add(i_child)
+				l_size +<< i_child.number_of_visible_trees
+				# if child is selected, select is again.
+				_if i_child.selected? _then l_selection.int!add(i_child) _endif
+			_else
+				i_child.int!parent << _unset
+			_endif
+		_endloop
+		# now set the new children to be the current ones
+		.children_cache << l_new_children
+		.int!nr_expanded_subtrees << l_size
+	_endblock
+	# check if we are part of a bigger change AND if we did change anything
+	_local l_sel_changes? << l_selection.change_notification_on_hold?
+	_self.changed(:filtering?, _true)
+	_self.changed( :data, :post_change )
+	# check if we are part of a bigger change AND if we did change anything
+	_if l_sel_changes?
+	_then
+		l_selection.notify_selection(_unset, _unset, l_old_handling_change?)
+	_else
+		l_selection.cancel_notify_selection()
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_manager.set_comp_value_filter(p_column_nr, p_string, p_value_id, p_value, p_converted?, p_comp_op)
+	## Parameters    : P_COLUMN_NR: Integer denoting a valid column.
+	##                 P_STRING: String from which P_VALUE has been
+	##                    derived, used for showing which filter is active.
+	##                 P_VALUE_ID: Id of column in P_COLUMN_NR,
+	##                    will be used to retrieve values with from
+	##                    display trees and build a predicate with in
+	##                    case an external_filterer is used.
+	##                 P_VALUE: The value that we are looking for;
+	##                    only data/children for which
+	##                    .value(P_VALUE_ID) = P_VALUE will be left.
+	##                 P_CONVERTED?: If _true, then P_VALUE has
+	##                    been converted already, if _false,
+	##                    P_VALUE is still a string.
+	##                 P_COMP_OP: Operator to be used for comparison;
+	##                    has to be known by binary_operator.known_operators
+	##                    and needs to return a boolean.
+	## Returns       : -
+	## Function      : Build a compare value filter predicate, set it in
+	##                 the filter values and apply it.
+	##                 If P_CONVERTED? is _false, either
+	##                 .filter_value_convertor will be used to
+	##                 convert P_VALUE,  or we'll check the some
+	##                 visible children to find an exemplar value.
+	##                 Note that it will be checked if this filter is a
+	##                 refinement, and if so, the filter will be
+	##                 applied incrementally rather than
+	##                 retrieving all data/children again.
+	# check if there is a change
+	_if ((l_old_filter << _self.filter_values[p_column_nr]) _isnt _unset) _andif (l_old_filter[2] = p_string)
+	_then
+		_return 
+	_endif
+	# check if the value has been converted already
+	_block
+		_handling error _with _proc @raise_error_as_user_error(p_condition)
+					      condition.raise(:user_error, :string, p_condition.report_contents_string)
+		_endproc
+		_if p_converted?
+		_then
+			# we're fine
+			# check if we have an external convertor
+		_elif (.filter_value_convertor _isnt _unset)
+		_then
+			p_value << .filter_value_convertor.invoke(p_value_id, p_value)
+		_else 
+			# check if we have a value to convert to
+			_local l_max << _self.estimated_size_for_slow_col
+			_for i_child, i_child_index _over _self.fast_children()
+			_loop
+				# check bound by maximum
+				_if (i_child_index >= l_max) _then _leave _endif
+				# check if we have a destination value
+				_if ((l_dest_value << i_child.value(p_value_id)) _is _unset) _then _leave _endif
+			_endloop
+			_if (l_dest_value _is _unset) 
+			_then
+				condition.raise(:filter_value_no_dest, :source, p_value)
+			_endif
+			_if l_dest_value.responds_to?(l_gen_mes << :|new_from_string()|) _orif
+			    l_dest_value.responds_to?(l_gen_mes << :|from_write_string()|)
+			_then
+				p_value << l_dest_value.perform(l_gen_mes, p_value)
+			_else
+				condition.raise(:filter_value_no_conversion, :source, p_value, :destination, l_dest_value.class_name)
+			_endif
+		_endif
+	_endblock
+	# store filter
+	_local l_bin_op << binary_operator[p_comp_op]
+	
+	_if .external_predicate_builder _isnt _unset
+	_then
+		l_p << .external_predicate_builder.invoke( p_column_nr, p_value_id, p_value, :compare, p_comp_op )
+	_elif (.external_filterer _is _unset)
+	_then
+		l_p << predicate.using(_proc @compare_value_in_column (p_display_tree)
+					       _import p_value_id, p_value, l_bin_op
+					       _local l_value << p_display_tree.value(p_value_id)
+					       >> (l_value _isnt _unset) _andif l_bin_op(l_value, p_value)
+				       _endproc)
+	_endif
+
+	_if l_p _is _unset 
+	_then		
+		l_gen_mes << _if (p_comp_op _is :|<|)
+			     _then >> :|lt()|
+			     _elif (p_comp_op _is :|<=|)
+			     _then >> :|le()|
+			     _elif (p_comp_op _is :|>|)
+			     _then >> :|gt()|
+			     _elif (p_comp_op _is :|>=|)
+			     _then >> :|ge()|
+			     _elif (p_comp_op _is :|~=|)
+			     _then >> :|ne()|
+			     _elif (p_comp_op _is :|=|)
+			     _then >> :|eq()|
+			     _endif
+		l_p << predicate.perform(l_gen_mes, p_value_id, p_value)
+	_endif
+	_self.filter_values[p_column_nr] << {:compare, p_string, l_p, p_value_id, p_value, p_comp_op}
+	_self.value(p_column_nr) << p_string
+	.int!styled_string << _unset
+	# apply filter, and check if we can incrementally refine
+	_local l_incremental? << (l_old_filter _is _unset) _orif 
+				 ((l_old_filter[1] _is :compare) _andif(p_comp_op _isnt :|~=|) _andif 
+				  (l_old_filter[6] _is p_comp_op) _andif l_bin_op(p_value, l_old_filter[5]))
+	_if _not l_incremental? _then l_p << _unset _endif
+	_self.int!apply_filter(l_p)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method display_tree_manager.set_data_cache(p_new, _optional p_remove_filter?)
+	## Parameters    : P_NEW: New collection to be used as a data cache.
+	##                 [P_REMOVE_FILTER?]: If _true then
+	##                    the older filter data is removed. If
+	##                    _false, then the current filter remains -
+	##                    if any. 
+	## Returns       : P_NEW
+	## Function      : Set and initialise the data_cache, depending
+	##                 attributes, and way we are going to read data from it.
+	_dynamic !updating_trees?! << _true
+	_if (p_remove_filter? _is _true )
+	_then
+		.int!styled_string << .filter_values << _unset
+		_if .external_filterer _isnt _unset
+		_then
+			p_new << .external_filterer.invoke(p_new, _unset, _false)
+		_endif
+		_self.changed(:filtering?, _false)
+	_endif
+	_self.int!data_cache << p_new
+	# give some listeners the change to get notified before others,
+	# so they can manipulate the data first (e.g. sort)
+	_self.changed(:pre_data_changed)
+	# notify there is new data (controls may re-adjust and redraw on this)
+	_self.changed(:data)
+	>> p_new
+_endmethod
+$
+
+$
+
+_pragma(classify_level=restricted)
+_method display_tree_manager.more_to_get_from_stream?
+	##
+	## Returns true if this is a streamed access and not all the
+	## records have been shown.
+	##
+	>> _self.data_access_type _is :streamed _andif .int!read_stream _isnt _unset 
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method display_tree_manager.empty_data_and_children_cache()
+	##
+	## Empties the cache of data (the cache of elements to be
+	## displayed) as well as the children_cache (the resulting
+	## display_trees for those elements).
+	## Makes sure there is no selection anymore, since that
+	## wouldn't make sense.
+	## 
+	
+	# empty selection
+	_self.selection.empty(_false)
+	
+	# remove all previous stuff
+	.data_cache << {}
+	.children_cache << {}
+	_self.int!children?? << _maybe
+
+	_self.int!close_read_stream()
+_endmethod
+$
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_manager.all_records_found?
+	##
+	## Returns whether all display trees have been cached (ie the
+	## tree is complete).
+
+	_local data_type << .data_access_type
+	_local data_cache << _self.data_cache
+	
+	>> _if data_type _is :streamed
+	   _then
+		   >> .int!read_stream _is _unset
+		   
+	   _elif data_type _is :indexed _orif
+		 _not data_cache.responds_to?( :|size_is_fast?| ) _orif
+		 data_cache.size_is_fast?
+	   _then
+		   >> data_cache.size = _self.number_of_children
+	   _else
+		   _local n << _self.number_of_children
+		   _local count << 0
+		   _local complete? << _true
+		   _over data_cache.fast_elements()
+		   _loop
+			   _if ( count +<< 1 ) > n
+			   _then
+				   complete? << _false
+				   _leave
+			   _endif
+		   _endloop
+		   >> complete?
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method display_tree_manager.interrupt_stream() 
+	## 
+	## If _self's data is streamed, close the stream and unset the
+	## slot, so no more data will be read. If this isn't done, a
+	## damage even can cause more data to be read after an
+	## interrupt.
+	##
+	_if (s << .int!read_stream) _isnt _unset
+	_then
+		_if s.responds_to?(:close|()|)
+		_then s.close()
+		_endif
+
+		.int!read_stream << _unset
+	_endif 
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_private _method display_tree_manager.check_events_thread()
+	## 
+	## If we are running in the events_thread, _self is locked by
+	## another thread, and the other thread's name either includes 
+	## "(slow thread)" or starts with "events", then run !abort!()
+	## to avoid the events_thread hanging for a protracted period.
+	## Otherwise simply returns.
+	## In the case where the other thread is an events thread, this
+	## is likely to have occured because the owning tree_item's
+	## data_selector has raised a condition.
+	## NOTE, if the condition raised is a warning, this will cause
+	## the system to behave correctly; if the condition is an error
+	## of any sort (including a user_error), the system may be left
+	## in a somewhat broken state.  In this case it is still deemed
+	## to be better than completely hung.
+	##
+
+	_if _thisthread _is events_thread _andif # prevent damage event locking events thread
+	    (t << system.lock_holder(_self)) _isnt _unset _andif
+	    t _isnt _thisthread
+	_then 
+		_if t.name.index_of_seq("(slow thread)") _isnt _unset
+		_then 
+			#DEBUG show("blocked by ", t, "aborting")
+			!abort!()
+		_elif t.name.index_of_seq("events") = 1
+		_then
+			#DEBUG show("blocked by ", t, "setting !updating_trees?!")
+			!abort!()
+		_endif
+	_endif
+	
+_endmethod
+$
+

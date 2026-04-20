@@ -1,0 +1,3729 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=basic, topic={tree_item})
+## The tree_item inherits from the scrollable canvas and its
+## purpose is to use (styled_string) renderers to render
+## headings and trees onto itself. It is hightly recommended to
+## read the product documentation on this subject.
+##
+## Properties supported are:
+##  * :discrete_scrolling?
+##    Flag indicating whether or not the top row is always drawn
+##    entirely (unless user uses thumbtail on v_scrollbar)
+##  * :message_on_no_data?
+##    Flag indicating if the message :no_display_data_available
+##    will be drawn on the screen when there are no display trees.
+##  * :dynamic_scrolling?
+##    Flag indicating whether or not new segments are to be
+##    scrolled to and displayed immediately or not.
+##  * :popup_menu
+##    The popup menu if the end-user right mouse clicks in the
+##    data area, i.e. not in the column-headings.
+##    This defaults to self.default_popup_menu
+##  * :headings_popup_menu
+##    Create and return the popup menu for use within _self's
+##    window's column headings. This is the popup menu if the
+##    end-user right mouse clicks in the column headings area. 
+##    This defaults to self.default_headings_popup_menu
+##  * :column_allow_visibility_change?:
+##    True if the end-user may use the right mouse menu to
+##    turn off the visibilities of columns
+##    This defaults to true.
+##  * :column_allow_visibility_manage?:
+##    True if the end-user may use the a sub-dialog
+##    (opened from the right mouse menu) to turn off the
+##    visibilities of columns.
+##    This defaults to false.
+##  * :column_allow_formatter_change?
+##    True if formatters are known and grouped via a
+##    unit display group in the styled holder, such that the user
+##    can choose alternative formats for values displayed.
+##    This defaults to true.
+##  * :column_allow_group_by_values
+##    Either _unset, if items cannot be grouped by a certain column,
+##    or a vector of booleans corresponding to the number of columns.
+##    In this _true (on the n-th position) means the end-user may
+##    group the display trees displayed at the first level by the
+##    values displayed on the n-th column
+##  * :visible_rows
+##    Initial height specified in number of display trees, taking into
+##    account the height of those trees
+##  * :width_in_chars
+##    Initial width specified in default font units
+##  * :height_in_chars
+##    Initial height specified in default font units
+##  * :width_in_cols
+##    Initial width specified in the number of columns, will be
+##    obtained by summing up the widths of those columns
+##  * :fixed_rowheight?
+##    If true rows will all be the same height (stored in the
+##    rowheight slot). If false the user (or api-programmer)
+##    can change this.
+##    This defaults to true.
+##  * filtering?
+##    If _true, then a region for entering filters is shown,
+##    if _false, it is not shown.
+##  * allow_filtering?
+##    If _true, then an option to turn on filtering is shown in
+##    the popup-menu, if _false, this option is not provided.
+##  * allow_refresh?
+##    If _true, then an option called 'refresh' is shown in the popup-menu;
+##    Choosing this will carry out the .refresh() command.
+##    As an alternative, consider specifying :allow_renew?,
+##    that is also listed as 'refresh' in the popup menu,
+##    but this is faster since it carries out the .renew() command.
+##    If _false, this option is not provided.
+##  * allow_renew?
+##    If _true, then an option called 'refresh' is shown in the popup-menu;
+##    Choosing this will carry out the .renew() command.
+##    Do not use this property in conjunction with
+##    allow_refresh? since they are both depicted as 'refresh'
+##    to the end-user.
+##    If _false, this option is not provided.
+##  * show_focus?
+##    If _true, then self's selection is drawn depending on
+##    whether self has focus. (Using the style-holders
+##    selected_colour and no_focus_colour).
+##    If _false, then self's selection is always drawn
+##    in the normal select colour.
+##    This defaults to false.
+##  * move_down_on_return?
+##    If _true, then focus will automatically move to the next
+##    field when the user hits the return key.  This only
+##    applies if the tree_item is in a state to accept keyboard
+##    input i.e. when a suitable in_place editor is active.
+##    If focus is on the tree_item itself, the return key will
+##    have no effect.
+##
+## Some properties are passed on to encorporated classes. Those
+## classes - and the method to access them - are:
+##  * _self.selection:        display_tree_selection
+##  * _self.tree_manager:     display_tree_manager
+##  * _self.style_holder:     string_styles_holder
+##  * _self.renderer:         display_tree_renderer
+##  * _self.heading_renderer: styled_heading_renderer
+##  * _self.agent:            tree_agent
+##
+## Inherited properties are: (See super's comments)
+##  * :help_id
+##  * :menu
+##  * :name
+##  * :tile_name
+##  * :parent
+##  * :visibility
+##  * :retained?
+##  * :position
+##  * :resize?
+##  * :min_width
+##  * :min_width_font_units
+##  * :resize_x?
+##  * :width
+##  * :min_height
+##  * :min_height_font_units
+##  * :resize_y?
+##  * :height
+##  * :left_object
+##  * :left_offset
+##  * :x
+##  * :row
+##  * :row_alignment
+##  * :top_object
+##  * :top_offset
+##  * :y
+##  * :col
+##  * :col_alignment
+##  * :bounds
+##  * :highlit?
+##  * :mandatory?
+##  * :has_mandatory_flag?
+##  * :cursor
+##  * :identifier
+def_slotted_exemplar(:tree_item,
+{
+	{:tree_manager,                    _unset},
+	{:tree_renderer,                   _unset},
+	{:heading_renderer,                _unset},
+	{:renderer_notifier,               _unset}, 
+	{:discrete_scrolling?,             _true }, 
+	{:message_on_no_data?,             _true },
+	{:dynamic_scrolling?,              _false},
+	{:discrete_y_fudge,                0     },
+	{:fixed_rowheight?,                _true},
+	{:int!check_fixed_rowheight?,      _false},
+	{:row_height,                      _unset} ,
+	{:col_headings_height,             0     },
+	{:cached_number_of_rows,           0     },
+	{:int!v_scrollbar?,                _false},
+	{:int!h_scrollbar?,                _false},
+	{:popup_menu,                      _unset},
+	{:column_allow_visibility_change?, _true },
+	{:column_allow_visibility_manage?, _false},
+	{:column_allow_formatter_change?,  _true },
+	{:column_allow_group_by_values,    _unset},
+	{:headings_popup_menu,             _unset},
+	{:int!rowheight_cache,             _unset}, # ToDo
+	{:int!column_headings_y,           0     }, 
+	{:show_focus?,                     _false},
+	{:has_focus?,                      _false},
+	{:filtering?,                      _false},
+	{:allow_filtering?,                _false},
+	{:allow_refresh?,                  _false},
+	{:allow_renew?,                    _false},
+	{:filter_renderer,                 _unset},
+	{:fixed_row_headings,              -1    }, # ToDo
+	{:int!row_headings_x,              0     },
+	{:move_down_on_return?,            _false},
+	{:auto_balloon_help?,              _true }, # ToDo
+	{:visibility_manager,              _unset},
+	{:allow_background_process?,       _false},
+	{:items,                           _unset}
+},
+{:scrollable_canvas,:gui_charvec_func_mixin})
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## The invisible parent of all displayed trees, manages caching
+## and retrieval.
+tree_item.define_slot_access(:tree_manager, :readable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Renderer used to render individual display trees (and their
+## row headings)
+tree_item.define_slot_access(:tree_renderer, :readable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Renderer used to render the column headings, at the top
+tree_item.define_slot_access(:heading_renderer, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Flag indicating whether or not new segments are to be
+## scrolled to and displayed immediately or not.
+tree_item.define_slot_access(:dynamic_scrolling?, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Indicates whether rows all the same rowheight (stored in the
+## rowheight slot) (_true, default) or that the user (or
+## api-programmer) can change this
+tree_item.define_slot_access(:fixed_rowheight?, :readable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={internal})
+## Internal quick check whether there is a deviating rowheight
+tree_item.define_slot_access(:int!check_fixed_rowheight?, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Flag indicating whether or not the top row is always drawn
+## entirely (unless user uses thumbtail on v_scrollbar)
+tree_item.define_slot_access(:discrete_scrolling?, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Flag indicating if the message :no_display_data_available
+## will be drawn on the screen when there are no display trees.
+tree_item.define_slot_access(:message_on_no_data?, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## True (default) if the end-user may use the right mouse menu to
+## turn off the visibilities of columns
+tree_item.define_slot_access(:column_allow_visibility_change?, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## True if the end-user may use a popup dialog menu to manage
+## the visibilities of columns (default false)
+tree_item.define_slot_access(:column_allow_visibility_manage?, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## True (default) if formatters are known and grouped via a
+## unit display group in the styled holder, such that the user
+## can choose alternative formats for values displayed.
+tree_item.define_slot_access(:column_allow_formatter_change?, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## If _true, then a region for entering filters is shown,
+## if _false, it is not shown.
+tree_item.define_slot_access(:filtering?, :readable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## If _true, then an option to turn on filtering is shown in
+## the popup-menu, if _false, this option is not provided.
+tree_item.define_slot_access(:allow_filtering?, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Renderer used to render the filter that might have been set,
+## renders this just under the column headings
+tree_item.define_slot_access(:filter_renderer, :readable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## If _true, then an option called 'refresh' is shown in the popup-menu;
+## Choosing this will carry out the .refresh() command.
+## As an alternative, consider specifying :allow_renew?,
+## that is also listed as 'refresh' in the popup menu,
+## but this is faster since it carries out the .renew() command.
+## If _false, this option is not provided.
+tree_item.define_slot_access(:allow_refresh?, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## If _true, then self's selection is drawn depending on
+## whether self has focus. (Using the style-holders
+## selected_colour and no_focus_colour).
+## If _false (default), then self's selection is always drawn
+## in the normal select colour.
+tree_item.define_slot_access(:show_focus?, :readable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Returns _true if self currently has focus, _false if focus
+## has moved away to another control
+tree_item.define_slot_access(:has_focus?, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Height used when drawing :styled_string of an displayed item
+## on a row.
+tree_item.define_slot_access(:row_height, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## VALUE is either _unset, if items cannot be grouped by a certain column,
+## or a vector of booleans corresponding to the number of columns.
+## In this _true (on the n-th position) means the end-user may
+## group the display trees displayed at the first level by the
+## values displayed on the n-th column
+##
+## VALUE needs to be set prior to asking for the
+## headings_popup_menu, since it is used in the method default_headings_popup_menu.
+tree_item.define_slot_access(:column_allow_group_by_values, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## If _true, then an option called 'refresh' is shown in the popup-menu;
+## Choosing this will carry out the .renew() command.
+## Do not use this property in conjunction with
+## allow_refresh? since they are both depicted as 'refresh'
+## to the end-user.
+## If _false, this option is not provided.
+tree_item.define_slot_access(:allow_renew?, :writable)
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+## If _true, then whenever the user hits the return key in an
+## in_place_alpha editor (or subclass thereof), a down keyboard
+## event will be triggered to move focus to the next field.
+tree_item.define_slot_access(:move_down_on_return?, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+tree_item.define_slot_access(:allow_background_process?, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Contains a list of properties that are defined on self,
+## *not* including self's facade classes (use
+## .supports_property?() to test for a certain property to exist)
+tree_item.define_shared_constant(:exported_properties,
+	set.new_with(:discrete_scrolling?, :message_on_no_data?, :dynamic_scrolling?, :popup_menu, :headings_popup_menu,
+		     :column_allow_visibility_change?, :column_allow_visibility_manage?, :column_allow_formatter_change?,
+		     :column_allow_groupby?, :column_allow_group_by_values,
+		     :visible_rows, :width_in_chars, :height_in_chars, :width_in_cols,
+		     :allow_filtering?, :filtering?, :allow_renew?, :allow_refresh?, :show_focus?, :row_height,
+		     :move_down_on_return?, :renderer_notifier, :allow_background_process?),
+	:public)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Contains a list of properties that are understood by self's superclasses
+## 
+## The property :retained? cannot be used at this moment since
+## it will stop damaged events from coming through.
+# ToDo: Implement support for retained?.
+tree_item.define_shared_constant(:inherited_properties,
+	set.new_with(:help_id, :menu, :name, :tile_name, :parent,
+		     :visibility, :retained?, :position, :resize?, 
+		     :min_width, :min_width_font_units, :resize_x?, :width, 
+		     :min_height, :min_height_font_units, :resize_y?, :height, 
+		     :left_object, :left_offset, :x, :row, :row_alignment, 
+		     :top_object, :top_offset, :y, :col, :col_alignment,
+		     :bounds, :highlit?, :mandatory?, :has_mandatory_flag?,
+		     :cursor, :identifier),
+	:private)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Contains a list of readonly properties that are defined on self,
+## *not* including self's facade classes (use
+## .supports_property?() to test for a certain property to exist)
+tree_item.define_shared_constant(:exported_ro_properties,
+	set.new_with(:tree_manager, :canvas, :renderer),
+	:public)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Default height for new tree_items if the height is not
+## specified anyotherway (min_height, or just height)
+tree_item.define_shared_constant(:default_height_in_chars, 10, :private)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Default width for new tree_items if the width is not
+## specified anyotherway (column_width, min_width, or just width)
+tree_item.define_shared_constant(:default_width_in_chars, 32, :private)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.new(p_parent, _gather p_properties)
+	## Parameters    : P_PARENT: Container, see super-class comments.
+	##                 {P_PROPERTIES}: List of properties
+	##                    (alternating key values) that are understood
+	##                    by self or helper classes that are created with those.
+	## Returns       : Instantiante a new instance of self
+	## Function      : Create a new instance of self, and - if not
+	##                 passed otherwise - a contained instance of
+	##                 the following classes as well: 
+	##                 * display_tree_manager, in its turn containing a
+	##                   - display_tree_selection
+	##                 * display_tree_renderer, in its turn containing a
+	##                   - tree_headings_holder
+	##                 * styled_heading_renderer
+	##                 * string_style_holder
+	##                 * tree_agent
+	>> _clone.init(p_parent, property_list.new_with(_scatter p_properties))
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.new_with_properties(p_parent, p_properties)
+	## See .new() method.
+	>> _clone.init(p_parent, p_properties)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method tree_item.init(p_parent, p_properties)
+	## Parameters    : P_PARENT: Container, see super-class comments.
+	##                 P_PROPERTIES: List of properties
+	##                    (alternating key values) that are understood
+	##                    by self or helper classes that are created with those.
+	##		   P_PROPERTIES may contain appropriately
+	##		   Note:
+	##                    subclassed exemplars for the properties:
+	##                    :tree_manager, :tree_renderer,: heading_renderer and
+	##                    :tree_agent may be supplied by including the relevant keys
+	##		      and exemplars in the property_list like:
+	##		      P_PROPERTIES[:heading_renderer] << my_heading_renderer_exemplar
+	##		      Any relevant subclasses should support the full
+	##		      interface defined by the default (super)class.
+	## 
+	## Returns       : Self
+	## Function      : Create a new instance of self, and - if not
+	##                 passed otherwise - a contained instance of
+	##                 the following classes as well: 
+	##                 * display_tree_manager, in its turn containing a
+	##                   - display_tree_selection
+	##                 * display_tree_renderer, in its turn containing a
+	##                   - tree_headings_holder
+	##                 * styled_heading_renderer
+	##                 * string_style_holder
+	##                 * tree_agent
+
+	# Set the parent here. This will also be set in _super.init()
+	# which is called below, but we need to have the parent set so
+	# that the item's top_frame can be obtained when we construct
+	# the in-place editors.
+	.parent << basic_window.check_type(p_parent)
+
+	.items << hash_table.new()
+	.items[:block_damage?] << _false
+	
+	# mark that popup menus have not been set yet
+	.popup_menu << .headings_popup_menu << :default
+	# check my input (1)
+	_local l_model << p_properties[:model]
+	_if (l_model _is _unset)
+	_then
+		l_model << p_properties[:data_source]
+	_elif (p_properties[:data_source] _is _unset)
+	_then
+		p_properties[:data_source] << l_model
+	_endif
+
+	# Sort out any subclassing for agent, manager, renderer and heading renderer.
+	l_tree_agent              << p_properties.remove_key(:tree_agent).default(tree_agent)
+	l_display_tree_manager    << p_properties.remove_key(:tree_manager).default(display_tree_manager)
+	l_display_tree_renderer   << p_properties.remove_key(:tree_renderer).default(display_tree_renderer)
+	l_styled_heading_renderer << p_properties.remove_key(:heading_renderer).default(styled_heading_renderer)
+	
+	p_properties[:canvas] << _self 
+	# create controller: handles and manages the data; adds itself to properties (A)
+	_local l_tree_manager << .tree_manager << p_properties[:tree_manager] << l_display_tree_manager.new(p_properties)
+	# create renderer
+	_local l_tree_renderer << .tree_renderer << l_display_tree_renderer.new(p_properties)
+	_local l_heading_renderer << .heading_renderer << l_styled_heading_renderer.new_from(l_tree_renderer, p_properties)
+	# Set the display_tree_manager's heading_holder
+	l_tree_manager.headings_holder << _self.headings_holder
+	
+	# check my input (2)
+	_local l_row_height << .row_height << _self.style_holder.row_height
+	_local l_width << p_properties[:width].default(p_properties[:min_width])
+	_local l_height << p_properties[:height].default(p_properties[:min_height])
+	# compute height
+	_if (l_height _is _unset)
+	_then
+		# for the moment, visible_rows is the same as height_in_chars
+		# this may change later on, to be the truly number of visible
+		# rows for the first time displayed data (subtracting the
+		# height of the headings, and taking into account the styles used)
+		_if ((l_visible_rows << p_properties[:visible_rows]) _isnt _unset)
+		_then
+			l_height << _self.int!height_needed_for_rows(l_visible_rows)
+		_elif ((l_visible_rows << p_properties[:height_in_chars]) _isnt _unset) _orif
+		      ((l_visible_rows << _self.default_height_in_chars) _isnt _unset) # default
+		_then 
+			l_height << l_visible_rows * l_row_height
+		_endif
+		# ToDo: Check this on Unix
+	_else
+		# compute initial visible rows...
+		l_visible_rows << ((l_height - 1) _div l_row_height) + 1
+	_endif
+	l_tree_manager.visible_rows << l_visible_rows
+	# correct 2 for the border, and 20 for a vertical scrollbar (only when dealing with width before realisation!)
+	_local l_scrollfix << _if (.int!v_scrollbar? << (l_tree_manager.number_of_visible_trees > (l_height _div l_row_height)))
+			      _then >> _self.scrollbar_correction_factor
+			      _else >> 0
+			      _endif
+	_if (l_width _is _unset)
+	_then
+		# visible_cols is depricated since it is ambiguous
+		_if ((l_width << p_properties[:width_in_chars].default(p_properties[:visible_cols])) _isnt _unset)
+		_then
+			l_width *<< _self.style_holder.col_width
+		_elif ((l_width << p_properties[:width_in_cols]) _isnt _unset)
+		_then
+			l_width << _self.int!width_needed_for_cols(l_width) + l_scrollfix
+			l_scrollfix << _unset 
+		_elif (p_properties[:column_widths] _isnt _unset)
+		_then
+			l_width << _self.headings_holder.width + l_scrollfix
+			l_scrollfix << _unset 
+		_elif ((l_width << _self.default_width_in_chars) _isnt _unset) # default
+		_then 
+			l_width *<< _self.style_holder.col_width
+		_endif
+	_endif
+	# set the default display style, but do not override the oen give by the api-user
+	_if (p_properties[:display_style] _is _unset) _andif _self.headings_holder.columns?
+	_then
+		_self.style_holder.display_style << :tabular
+	_endif
+	# create agent: only function: send appropriate user/window_system input to controller  (B)
+	_local l_agent << l_tree_agent.new(l_model, _self, p_properties)
+	# filter my properties from the complete set (3)
+	_local l_inherited_props << _self.inherited_properties, l_exported_props << _self.exported_properties,
+	       l_exp_ro_props << _self.exported_ro_properties, l_facade_props << _self.facade_properties
+	_local l_my_properties << rope.new_for(l_exported_props.size)
+	_for i_key, i_value _over p_properties.fast_keys_and_elements()
+	_loop
+		_if l_inherited_props.includes?(i_key)
+		_then
+			l_my_properties.add(i_key)
+			l_my_properties.add(i_value)
+		_elif l_exported_props.includes?(i_key)
+		_then
+			_self.perform(i_key.with_chevron, i_value)
+		_elif l_exp_ro_props.includes?(i_key)
+		_then
+			# ignore
+		_elif _not l_facade_props.includes?(i_key)
+		_then
+			# notify api-user, we do not show the value yet... i_value
+			condition.raise(:unrecognised_property, :name, _self.class_name, :property_name, i_key)
+		_endif
+	_endloop
+	# store settings for detecting resized notifications
+	.cached_height << l_height
+	.cached_width << l_width
+	# set initial width for headings:
+	_if (l_scrollfix _isnt _unset)
+	_then
+		_self.headings_holder.min_width << _self.width - l_scrollfix
+	_endif
+	l_heading_renderer.row_height << _self.headings_holder.height
+	_self.int!compute_col_headings_height()
+	# set up dependencies
+	_self.int!set_dependencies()
+	# create self: only function: drawing stuff on the right place (C)
+	_super(scrollable_canvas).init(l_agent, l_width, l_height, p_parent, l_my_properties)
+	# enable events
+	l_agent.enable_events()
+	>> _self 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method tree_item.done_realise()
+	## Configure _self after having been realised. This calls the
+	## parents figure_layout() method to calculate _self's position
+	## and size.
+	_if _self.responds_to?(:|background_colour<<|)
+	_then
+		_self.background_colour << colour.called(:background)
+	_endif
+	# call this since only now do we know the client edge factor,
+	# and can we set the v_doc_size correctly
+	_self.update_scrolling(_true)
+	>> _super.done_realise()
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method tree_item.int!set_dependencies()
+	## Parameters    : 
+	## Returns       : 
+	## Function      : Make self dependent on (<object>, <aspect>)
+	##                 * tree_manager:    :data, :height
+	##                 * selection:       :selection
+	##                 * headings_holder: :width, :height
+	##                 * style_holder:    :height
+	##                 These dependencies should be set when self
+	##                 is activated.
+	_self.tree_manager.add_dependent(_self, :data, :height, :filtering?, :all_records_found, :column_headings)
+	_self.selection.add_dependent(_self, :selection)
+	_self.headings_holder.add_dependent(_self, :width, :height)
+	_self.style_holder.add_dependent(_self, :height)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method tree_item.int!remove_dependencies()
+	## Parameters    : 
+	## Returns       : 
+	## Function      : Removes all self's dependencies;
+	##                 These should be removed when self is deactivated
+	##                 (i.e. when there is no drawing surface)
+	_self.tree_manager.remove_dependent(_self)
+	_self.selection.remove_dependent(_self)
+	_self.headings_holder.remove_dependent(_self)
+	_self.style_holder.remove_dependent(_self)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.style_holder
+	## Parameters    : -
+	## Returns       : The style_holder that belongs to
+	##                 self's tree_renderer.
+	## Function      : 
+	>> _if ((l_tree_renderer << _self.tree_renderer) _isnt _unset)
+	   _then >> l_tree_renderer.style_holder
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, usage={subclassable})
+_method tree_item.selection
+	## Parameters    : -
+	## Returns       : The display_tree_selection that belongs to
+	##                 self's tree_manager.
+	## Function      : 
+	>> _if ((l_tree_manager << _self.tree_manager) _isnt _unset)
+	   _then >> l_tree_manager.selection
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.note_change(p_who, p_what, p_value)
+	## Parameters    : P_WHO: Object that issued the change notification.
+	##                 P_WHAT: The aspect that changed: One of
+	##                  * :data (reset vertical position)
+	##                  * :selection (redraw change display trees)
+	##                  * :height (check the number of display trees)
+	##                  * :width (update the horizontal scrollbar)
+	##                 P_VALUES: Optional extra argument;
+	##                  * In case P_WHAT is :selection, this is the
+	##                    set of changed trees.
+	##                  * In case P_WHAT is :height: In case P_WHO is
+	##                    the headings_holder, P_VALUE will
+	##                    contain the new height for the headings;
+	##                    If _true, we will always do a redraw; If
+	##                    _false or _unset, we'll just check if the
+	##                    number of elements changed. Otherwise
+	##                    assume it is a set of display_trees we
+	##                    need to redraw. 
+	## Returns       : 
+	## Function      : React to change notifications.
+	_if (p_what _is :data)
+	_then
+		# clear the focus tree
+		_self.selection.focus_tree << _unset
+		
+		# ask for children, re-do headings, etc.
+		_if !updating_trees?!
+		_then
+			# ignore, we're are updating
+		_elif (l_selection << _self.selection).empty?
+		_then
+			_local l_old << _self.vertical_position
+			# in case of dynamic scrolling, scroll to the end (max v position)
+			_local l_new << _if .dynamic_scrolling? _then >> _self.v_doc_size _else >> 0 _endif
+			# if we did not scroll, do a redraw; data-changed notification
+			# can be given while we are unrealised, so guard against this
+			_if ((_self.vertical_position << l_new) = l_old) _andif _self.realised?
+			_then
+				_self.redraw()
+			_endif
+		_else
+			_if (_not _self.ensure_selection_visibility()) _andif _self.realised?
+			_then
+				_self.redraw()
+			_endif
+		_endif
+		# we have new data, stop editing the previous data, no recovery
+		.agent.stop_edit(_false)
+	_elif (p_what _is :selection)
+	_then
+		# p_value contains l_changed_trees
+		_if (p_value _isnt _unset)
+		_then
+			_self.redraw_selection(p_value)
+		_else
+			_self.redraw()
+
+			_if _not (l_selection << _self.selection).empty?
+			_then
+				# store the first selected tree
+				l_selection.focus_tree << l_selection.start_tree
+			_endif
+		_endif
+
+	_elif (p_what _is :height)
+	_then
+		_if _not _self.realised?
+		_then
+			_return 
+		# check if we changed doc height; this generates a damaged
+		# event in which case we do not want to redraw
+		_elif (p_who _is _self.headings_holder)
+		_then
+			# p_value contains l_new_height
+			.heading_renderer.row_height << p_value
+			_self.int!compute_col_headings_height()
+			_self.update_v_scrolling()
+		_elif (p_who _is _self.style_holder)
+		_then
+			.tree_renderer.row_height << .row_height << p_value
+			# at this moment, we leave the filterer heaving the default
+			# row-height based on the font used for renderer the filter
+			# if we do not want this, we can change things accordingly:
+			#_if (.filter_renderer _isnt _unset) _then .filter_renderer.row_height << p_value _endif
+			#_self.int!compute_col_headings_height()
+			_self.update_v_scrolling()
+			_self.redraw()
+		_elif _self.check_number_of_rows()
+		_then
+			# a damaged event will be caused...
+		_elif (p_value _is _true)
+		_then
+			# check if a redraw is being forced
+			_self.redraw()
+		_elif (p_value _isnt _unset) _andif
+		      (p_value _isnt _false) #p_value.responds_to?(:|includes?()|)
+		_then
+			# let's redraw just a set of trees rather than all
+			_self.redraw_selection(p_value)
+		# in the _else case, we could do a _self.redraw(), but that is
+			# not always necessary; if it is, the _true should be passed.
+		_endif 
+	_elif (p_what _is :width)
+	_then
+		_self.update_h_scrolling()
+		.agent.check_edit_position()
+		_if _not !updating_trees?!
+		_then
+			# comes from heading holder; the headings height might have changed as well
+			_self.redraw()
+		_endif
+	_elif (p_what _is :filtering?)
+	_then
+		# when the :filtering? notification is given by the tree-manager,
+		# it will always be followed by a :data-change notification
+		_self.int!filtering? << p_value
+	_elif (p_what _is :all_records_found)
+	_then
+		# Forward notification of all_records_found
+		_self.changed( :all_records_found, p_value )
+	_elif (p_what _is :column_headings)
+	_then
+		# Forward notification of column_headings
+		_self.changed( :column_headings )
+	_endif
+
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.visible_rows
+	## Parameters    : 
+	## Returns       : The number of row that are occupied by the
+	##                 visible display trees. This function will
+	##                 change when display_trees can have different heights.
+	##                 Secondly, it returns the height that is
+	##                 left-over, i.e. not entire row.
+	## Function      :
+	_local (l_rows, l_rest) << (_self.height - .col_headings_height).div_mod(.row_height)
+	>> 1.max(l_rows), l_rest
+_endmethod
+$
+
+# call this from init _method to be safe
+
+_pragma(classify_level=restricted, usage={internal})
+_private _method tree_item.init_scrolling()
+	## Initialise the scrolling behaviour.
+	##
+	## This must be called from the subclass init() method.
+	# call this from init _method to be safe
+	_local l_tree_manager << .tree_manager
+	_local l_row_height << .row_height
+	_local l_col_width << _self.style_holder.col_width
+	.v_doc_size << .v_page_size << .v_line_size << .v_position << .h_doc_size << .h_page_size << .h_line_size << .h_position << 0
+	_self.add_horizontal_scrollbar(
+		.h_doc_size << _self.headings_holder.width,
+		.h_page_size << _self.width,
+		.h_line_size << l_col_width)
+	_self.add_vertical_scrollbar(
+		.v_doc_size << l_tree_manager.number_of_children * l_row_height,
+		.v_page_size << _self.height - .col_headings_height,
+		.v_line_size << l_row_height)
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_method tree_item.update_scrolling(_optional p_always_update_v_scrolling?)
+	## Parameters    : P_ALWAYS_UPDATE_V_SCROLLING?: If true, then
+	##                    the v_scrollbar is always updated
+	##                    (default is _false, just check if it is necessary).
+	## Returns       : _true if this will cause a damaged event,
+	##                 _false otherwise
+	## Function      : 
+	# First compute the horizontal scrolbar, then the vertical one,
+	# such that we do not get unwanted space next to the headings
+	# (.e.g scrapbook and version-manager).
+	_local l_damage? << (_self.update_h_scrolling() _or _self.check_number_of_rows(p_always_update_v_scrolling?))
+	# since the widtn may be have changed...
+	_self.int!check_width()
+	>> l_damage?
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_method tree_item.update_h_scrolling()
+	## Parameters    : -
+	## Returns       : _true if we will cause changes to the
+	##                 current settings, _false otherwise
+	## Function      : Update the parameters for the horizontal scrollbar
+	_local l_headings_holder << _self.headings_holder
+	_local l_vis_width << _self.width
+	_local l_doc_width << l_headings_holder.width
+	_local l_page_width << l_headings_holder.page_width(l_vis_width, _self.horizontal_position)
+	# correct for strange plafform sizes...
+	l_doc_width << 1.max(l_doc_width)
+	_local l_changes? << (_self.h_doc_size <> l_doc_width) _orif (_self.h_page_size <> l_page_width)
+	# if no changes, we might leave now
+	_if l_changes?
+	_then
+		# set doc width to the contents width
+		_self.h_doc_size << l_doc_width
+		# set paging to width of next column (max self's width)
+		_self.h_page_size << l_page_width
+	_endif
+	# check if we have a h_scrollbar or not
+	.int!h_scrollbar? << (l_doc_width > l_vis_width)
+	>> l_changes?
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_method tree_item.update_v_scrolling()
+	## Parameters    : -
+	## Returns       : True if a scrollbar appeared or disappeared
+	## Function      : Update the parameters for the vertical scrollbar
+	_local l_row_height << .row_height
+	_local l_col_headings_height << .col_headings_height
+	_local l_doc_height << 1.max(.cached_number_of_rows * l_row_height + l_col_headings_height)
+	_local (l_visible_rows, l_rest_height) << _self.visible_rows
+	l_doc_height +<< _if .discrete_scrolling? _then >> l_rest_height _else >> 0 _endif
+	l_doc_height << 1.max(l_doc_height)
+	# check if we have a v_scrollbar or not
+	_local l_old_v_scrollbar? << .int!v_scrollbar? ^<< (l_doc_height > _self.height)
+	# we know that, if we set the doc height and we do *not* have a v-
+	# scrollbar now, and if we do get one as a result. Therefore,
+	# we might want to adjust the width first, so we can prevent
+	# getting a temporary scrollbar
+	_if (_not l_old_v_scrollbar?) _andif .int!v_scrollbar?
+	_then
+		# we know our width will descrease with the width of a
+		# scrollbar; therefore let's apply it right now rather than in .
+		# resized(), called from the _super.config_change()
+		_dynamic !updating_trees?! << _true 
+		_self.headings_holder.width << (_self.width - _self.scrollbar_correction_factor)
+	_endif
+	# set doc to be the contents height
+	_self.v_doc_size << l_doc_height
+	# we want to scroll down the height of the visible rows (no column headings)
+	_self.v_page_size << l_page_height << (.tree_manager.visible_rows << l_visible_rows) * l_row_height
+	# adjust for different row-heights
+	_self.v_line_size << l_row_height 
+	>> (l_old_v_scrollbar? _xor .int!v_scrollbar?)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.check_number_of_rows(_optional p_always_update_v_scrolling?)
+	# Author         : GE Smallworld (Ken Korsmit)
+	# Date           : Nov/2001
+	#
+	## Parameters    : P_ALWAYS_UPDATE_V_SCROLLING?: If true, then
+	##                    the v_scrollbar is always updated
+	##                    (default is _false, just check if it is necessary).
+	## Returns       : True is v_scrolling has been updated *and*
+	##                 this will cause a damaged event
+	## Function      : Check if the number of rows changed, and if
+	##                 so, update the vertical scrollbar. If it changed, it implies
+	##                 trees might have added / removed, and thus
+	##                 the width is recomputed by calling .check_width()
+	## Methodology   : If the call of this function will cause the
+	##                 fetching of data, it will not start redrawing since
+	##                 !updating_trees?! is set to _true. This is done since
+	##                 .check_number_of_rows is typically called/used in redrawing functions.
+	#
+	# the dynamic is necessary at this position: when the number of
+	# rows is asked for, we do not want a redraw
+	_dynamic !updating_trees?! << _true 
+	# check if we have got children now
+	_local l_tm << _self.tree_manager, l_old_v_scroll? << .int!v_scrollbar?, l_width_change? << _false 
+	# check if we have more or less children
+	_if ((l_number_of_rows << l_tm.number_of_visible_trees) <> .cached_number_of_rows)
+	_then
+		.cached_number_of_rows << l_number_of_rows
+		# if the height did change first adjust scrollbars, then recompute width...
+		l_width_change? << _self.update_v_scrolling() _or _self.check_width()
+	_elif (p_always_update_v_scrolling? _is _true)
+	_then 
+		_self.update_v_scrolling()
+	_else
+		_return _false 
+	_endif
+	>> l_width_change?
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.supports_property?(p_key)
+	## Parameters    : P_KEY: Name of property
+	## Returns       : _true if _self or any of the contained
+	##                 classes supports the P_KEY property, _false otherwise.
+	## Function      : 
+	>> _self.inherited_properties.includes?(p_key) _orif 
+		((((l_tree_manager << .tree_manager) _isnt _unset) _orif 
+		  ((l_tree_manager << display_tree_manager) _isnt _unset)) _andif 
+		 l_tree_manager.exported_properties.includes?(p_key)) _orif
+		((((l_headings_holder << _self.headings_holder) _isnt _unset) _orif 
+		  ((l_headings_holder << tree_headings_holder) _isnt _unset)) _andif 
+		 l_headings_holder.exported_properties.includes?(p_key)) _orif
+		((((l_style_holder << _self.style_holder) _isnt _unset) _orif 
+		  ((l_style_holder << string_styles_holder) _isnt _unset)) _andif 
+		 l_style_holder.exported_properties.includes?(p_key)) _orif 
+		((((l_selection << _self.selection) _isnt _unset) _orif 
+		  ((l_selection << display_tree_selection) _isnt _unset)) _andif 
+		 l_selection.exported_properties.includes?(p_key)) _orif 
+		((((l_agent << _self.agent) _isnt _unset) _orif 
+		  ((l_agent << tree_agent) _isnt _unset)) _andif 
+		 l_agent.exported_properties.includes?(p_key)) _orif 
+		((((l_renderer << _self.renderer) _isnt _unset) _orif 
+		  ((l_renderer << display_tree_renderer) _isnt _unset)) _andif 
+		 l_renderer.exported_properties.includes?(p_key)) _orif 
+		_self.exported_properties.includes?(p_key)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.set_property(p_key, p_new_value)
+	## Parameters    : P_KEY: Name of property
+	##                 P_NEW_VALUE: New value for P_KEY
+	## Returns       : P_NEW_VALUE
+	## Function      : Tries to set P_NEW_VALUE to the appropriate
+	##                 property for one of the contained classes
+	##                 that the P_KEY property. If none supports P_KEY, the 
+	##                 super gets called, which might raise a condition.
+	## Methodology   :
+	>> _if _self.inherited_properties.includes?(p_key)
+	   _then
+		   >> _super.set_property(p_key, p_new_value)
+	   _elif ((l_tree_manager << .tree_manager) _isnt _unset) _andif 
+		 l_tree_manager.exported_properties.includes?(p_key)
+	   _then
+		   >> l_tree_manager.perform(p_key.with_chevron, p_new_value)
+	   _elif ((l_headings_holder << _self.headings_holder) _isnt _unset) _andif 
+		 l_headings_holder.exported_properties.includes?(p_key)
+	   _then
+		   >> l_headings_holder.perform(p_key.with_chevron, p_new_value)
+	   _elif ((l_style_holder << _self.style_holder) _isnt _unset) _andif 
+		 l_style_holder.exported_properties.includes?(p_key)
+	   _then
+		   >> l_style_holder.perform(p_key.with_chevron, p_new_value)
+	   _elif ((l_selection << _self.selection) _isnt _unset) _andif 
+		 l_selection.exported_properties.includes?(p_key)
+	   _then
+		   >> l_selection.perform(p_key.with_chevron, p_new_value)
+	   _elif ((l_agent << _self.agent) _isnt _unset) _andif 
+		 l_agent.exported_properties.includes?(p_key)
+	   _then
+		   >> l_agent.perform(p_key.with_chevron, p_new_value)
+	   _elif ((l_renderer << _self.renderer) _isnt _unset) _andif 
+		 l_renderer.exported_properties.includes?(p_key)
+	   _then
+		   >> l_renderer.perform(p_key.with_chevron, p_new_value)
+	   _elif _self.exported_properties.includes?(p_key)
+	   _then
+		   >> _self.perform(p_key.with_chevron, p_new_value)
+	   _else
+		   # ToDo: Unknown property
+		   >> _super.set_property(p_key, p_new_value)
+	   _endif 
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_method tree_item.get_property(p_key)
+	## Parameters    : P_KEY: Name of property
+	## Returns       : Value of the property known as P_KEY.
+	## Function      : Tries to get the property P_KEY for one of
+	##                 the contained classes. If none supports P_KEY, the 
+	##                 super gets called, which might raise a condition.
+	>> _if _self.inherited_properties.includes?(p_key)
+	   _then
+		   >> _super.get_property(p_key)
+	   _elif ((l_tree_manager << .tree_manager) _isnt _unset) _andif 
+		 l_tree_manager.exported_properties.includes?(p_key)
+	   _then
+		   >> l_tree_manager.perform(p_key)
+	   _elif ((l_headings_holder << _self.headings_holder) _isnt _unset) _andif 
+		 l_headings_holder.exported_properties.includes?(p_key)
+	   _then
+		   >> l_headings_holder.perform(p_key)
+	   _elif ((l_style_holder << _self.style_holder) _isnt _unset) _andif 
+		 l_style_holder.exported_properties.includes?(p_key)
+	   _then
+		   >> l_style_holder.perform(p_key)
+	   _elif ((l_selection << _self.selection) _isnt _unset) _andif 
+		 l_selection.exported_properties.includes?(p_key)
+	   _then
+		   >> l_selection.perform(p_key)
+	   _elif ((l_agent << _self.agent) _isnt _unset) _andif 
+		 l_agent.exported_properties.includes?(p_key)
+	   _then
+		   >> l_agent.perform(p_key)
+	   _elif ((l_renderer << _self.renderer) _isnt _unset) _andif 
+		 l_renderer.exported_properties.includes?(p_key)
+	   _then
+		   >> l_renderer.perform(p_key)
+	   _elif _self.exported_properties.includes?(p_key)
+	   _then
+		   >> _self.perform(p_key)
+	   _else
+		   # ToDo: Unknown property
+		   >> _super.get_property(p_key)
+	   _endif 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.discrete_scrolling? << p_value?
+	## Flag indicating whether or not the top row is always drawn
+	## entirely (unless user uses thumbtail on v_scrollbar)
+	_if (.discrete_scrolling? << p_value?)
+	_then
+		.fixed_rowheight? << _true 
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.fixed_rowheight? << p_value?
+	## Parameters    : P_VALUE?: Boolean
+	## Returns       : P_VALUE?
+	## Function      : Specifies whether we have .fixed_rowheight?
+	##                 (derived from the default_style, is default) or that we
+	##                 will compute the row_height for each row (display_tree).
+	## Methodology   : When .fixed_rowheight? is set to _true,
+	##                 :discrete_scrolling? is .set to _true as well (and vice versa).
+	##                 This ensures that is a user scrolls, the top
+	##                 row is always visible. Of course, this is to
+	##                 costly when :fixed_rowheight? is _false.
+	# set the default that goes with it
+	.discrete_scrolling? << (.fixed_rowheight? << p_value?)
+	>> p_value?
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.row_at(p_y)
+	## Parameters    : P_Y: Vertical position on the canvas
+	## Returns       : 1) Display_tree, if there is one displayed at P_Y
+	##                    _unset otherwise
+	##                 2) _true if in the column headings, _false otherwise.
+	##                 3) The index of the row at P_Y;
+	##                    _unset if there is not a row displayed
+	##                    Note that column headings start counting
+	##                    at row 1, and the data as well.
+	##                 4) The distance of P_Y from the top where (3) starts.
+	## Function      : 
+	_local (l_row_index, l_in_col_headings?, l_remainder) << _self.row_index_at(p_y)
+	_if l_in_col_headings? _orif (l_row_index _is _unset)
+	_then
+		_return (_unset, l_in_col_headings?, l_row_index, l_remainder)
+	_endif
+	_for i_tree, i_index _over .tree_manager.fast_visible_trees(l_row_index)
+	_loop
+		_return (i_tree, _false, l_row_index, l_remainder)
+	_endloop
+	>> (_unset, _false, _unset, _unset)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.row_index_at(p_y)
+	## Parameters    : P_Y: Vertical position on the canvas
+	## Returns       : 1) The index of the row at P_Y;
+	##                    _unset if there is not a row displayed
+	##                    Note that column headings start counting
+	##                    at row 1, and the data as well.
+	##                 2) _true if in the column headings, _false otherwise.
+	##                 3) The distance of P_Y from the top where (1) starts.
+	## Function      :
+	# Calculate offset y position in the visible part of the canvas
+	# Add 1 to index from 1 rather than 0
+	_local l_y_in_screen << (p_y - _self.vertical_position) + 1
+	# check the position where headings have been drawn, and where they are in reality
+	_if l_y_in_screen.in_range?(1, l_col_headings_height << .col_headings_height)
+	_then
+		# it is a heading
+		_return (1, _true, l_y_in_screen)
+	_endif
+	_local (l_row_index, l_remainder) << _self.int!row_index_at(p_y - .discrete_y_fudge)
+	_if l_row_index.in_range?(1, .cached_number_of_rows)
+	_then
+		_return (l_row_index, _false, l_remainder)
+	_endif
+	>> (_unset, _false, 0)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.int!row_index_at(p_y)
+	## Parameters    : P_Y: Vertical position on the canvas
+	## Returns       : 1) The index of the row at P_Y;
+	##                    _unset if there is not a row displayed
+	##                    Note that column headings start counting
+	##                    at row 1, and the data as well.
+	##                 2) The distance of P_Y from the top where (1) starts.
+	## Function      : Does not check for headings, just check
+	##                 where P_Y is located.
+	_local (l_quotient, l_remainder) << p_y.div_mod(.row_height)
+	>> (l_quotient + 1, l_remainder)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.redraw( _optional p_area, p_damage? )
+	##
+	## Redraws the area P_AREA. Redraws the whole visible area if
+	## an area is not specified.
+	## Performs the redraw in a background thread if appropriate.
+
+        _if _self.drawing_surface _is _unset
+        _then
+		_return
+        _endif 
+        
+	_if .items[:block_damage?]
+	_then
+		_if p_damage? _is _true _then _return _endif
+
+		_self.process_redraw( p_area )
+
+	_elif p_damage? _is _true
+	_then
+		# The window damage events must be handled in the events
+		# thread so the damaged rows are calculated and redrawn
+		# correctly.
+		_self.process_redraw( p_area )
+	_else
+		_self.background_process( :|process_redraw()|, p_area )
+	_endif
+	
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.headings_holder
+	## Parameters    : 
+	## Returns       : Self's headings holder, which knows about
+	##                 columns and headings.
+	## Function      : 
+	>> _if ((l_tree_renderer << _self.tree_renderer) _isnt _unset)
+	   _then >> l_tree_renderer.headings_holder
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.row_height(p_row)
+	## Parameters    : P_ROW: Integer denoting the nth-row.
+	## Returns       : Rowheight for row P_ROW
+	## Function      : 
+	>> .row_height
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_method tree_item.resized()
+	## Parameters    : 
+	## Returns       : _true if this will cause a damaged event,
+	##                 _false otherwise
+	## Function      : _self's window has been resized. Recompute scrollbars;
+	##                 do not start redrawing.
+	_super.resized()
+	
+	_block
+		_dynamic !updating_trees?! << _true 
+		_self.headings_holder.width << _self.width
+	_endblock
+	# it is necessary to update the v-scrollbar always, since the
+	# height might have changed.
+	>> _self.update_scrolling(_true)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={internal})
+_method tree_item.default_popup_menu
+	## Create and return the default popup menu for use within _self's
+	## window. This is the popup menu if the end-user right mouse
+	## clicks in the data area, i.e. not in the column-headings.
+	## 
+	## If single selection is not enforced, a 'select all' will be available.
+	## A 'clear selection' will always be there.
+	## If there display trees have children, added are 'expand,'
+	## 'compress,' and 'expand all'.
+	_return _self.create_default_popup_menu(_self.tree_manager.second_level_children?)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={internal})
+_method tree_item.default_headings_popup_menu
+	## Create and return the default popup menu for use within _self's
+	## column headings. This is the popup menu if the end-user right mouse
+	## clicks on the column headings' area, i.e. in data area below that.
+	##
+	## If :column_allow_visibility_change? is _true (default), a 'Show' menu
+	## is added that the end-user can use to hide/show columns.
+	##
+	## If :column_allow_visibility_manage? is _true (default), a
+	## 'Manage Columns' menu is added that the end-user can use to
+	## hide/show columns (using a dialog).
+	##
+	## If :column_allow_formatter_change? is _true (default), and there are alternative formatters available for
+	## the currently formatted vales, a 'format' menu is added that
+	## allows the end-user to choose a different one.
+	## 
+	## If :column_allow_groupby? is _true (_false is
+	## default) and there is more that one column heading, a menu
+	## is added that allows the end-user to group on the values in
+	## a column. 
+	_local l_empty? << _true 
+	_local l_mess_acc << message_handler.new(:gen_graphics)
+	_local l_style_holder << _self.style_holder
+	_local l_popup_menu << popup_menu.new(_self, l_style_holder.message(:selection))
+	_local l_headings_holder << _self.headings_holder
+
+	_if  .column_allow_visibility_manage?
+	_then
+		button_item.new( l_popup_menu,
+				 l_style_holder.message(:manage_headings),
+				 _self,
+				 :|manage_columns()|)
+		l_empty? << _false 
+	_endif
+
+	_if .column_allow_visibility_change?
+	_then
+		_local l_sub_menu << pulldown_menu.new()
+		menu_button_item.new(l_popup_menu, l_style_holder.message(:show_column_heading), l_sub_menu,
+				     :mnemonic, l_style_holder.message(:show_column_heading_m).first )
+		
+		_for i_heading, i_column_index _over l_headings_holder.fast_headings_and_indices()
+		_loop
+			toggle_item.new(l_sub_menu, i_heading, 
+					:model,           l_headings_holder,
+					:change_selector, {:|set_column_visibility?()|, i_column_index},
+					:aspect,          :column_visibility?,
+					:value_selector,  {:|column_visibility?()|, i_column_index})
+		_endloop
+		l_empty? << _false 
+	_endif
+	
+	_if .column_allow_formatter_change?
+	_then
+		_local l_sub_menu << _unset
+		# ToDo: Change this to incorporate the defined
+		# unit-display-groups rather than the headings!
+		_for i_heading, i_column_index _over l_headings_holder.fast_headings_and_indices()
+		_loop
+			_local l_column_id << l_headings_holder.column_heading_id(i_column_index)
+			_if l_style_holder.has_alternative_formats?(l_column_id)
+			_then
+				_if (l_sub_menu _is _unset)
+				_then
+					l_sub_menu << pulldown_menu.new()
+					menu_button_item.new(l_popup_menu, l_style_holder.message(:format_column_heading), l_sub_menu,
+							     :mnemonic, l_style_holder.message(:format_column_heading_m).first )
+				_endif
+				_local l_subsub_menu << pulldown_menu.new()
+				menu_button_item.new(l_sub_menu, i_heading, l_subsub_menu)
+				_for i_formatter, i_string _over l_style_holder.formatters_and_strings_for(l_column_id)
+				_loop
+					radio_item.new(l_subsub_menu,    i_string,
+						       :model,           l_style_holder,
+						       :change_selector, {:|formatter()<<|, i_formatter, l_column_id},
+						       :value_selector,  {:|is_formatter_for?()|, i_formatter, l_column_id},
+						       :aspect,          :formatter_has_been_set)
+				_endloop
+			_endif
+		_endloop
+		l_empty? << _false 
+	_endif
+	
+	_if _self.column_allow_groupby? _andif l_headings_holder.columns?
+	_then
+		_local l_cagbvs << .column_allow_group_by_values
+		_local l_sub_menu << pulldown_menu.new()
+		
+		menu_button_item.new(l_popup_menu, l_style_holder.message(:group_by_column), l_sub_menu,
+				     :mnemonic, l_style_holder.message(:group_by_column_m).first)
+		
+		l_group << radio_group.new( l_sub_menu,
+					    :model, _self,
+					    :change_selector,
+					    {:|background_process()|, :|set_column_grouped_by?()|} )
+
+		l_item << toggle_item.new( l_sub_menu, l_style_holder.message(:no_column_grouping) )
+		l_group.manage_child( l_item, 0 )
+
+		_for i_heading, i_column_index _over l_headings_holder.fast_headings_and_indices()
+		_loop
+			# if api-user did specify column_group_by_values, then only
+			# allow group-by's for the columns that are specified
+			_if (l_cagbvs.size >= i_column_index) _andif l_cagbvs[i_column_index]
+			_then
+				l_item << toggle_item.new( l_sub_menu, i_heading )
+				l_group.manage_child( l_item, i_column_index )
+			_endif
+		_endloop
+		
+		l_group.always_one? << _true
+		l_group.value << 0
+		.items[:grouped_by_item] << l_group
+		.items[:last_grouped_by_index] << 0
+		
+		l_empty? << _false 
+	_endif
+	
+	_if .allow_filtering?
+	_then
+		toggle_item.new(l_popup_menu,     l_mess_acc.human_string(:filter), 
+				:model,           _self,
+				:mnemonic,        l_mess_acc.human_string(:filter_m).first,
+				:change_selector, :|filtering?<<|,
+				:aspect,          :|filtering?|,
+				:value_selector,  :|filtering?|)
+		l_empty? << _false
+	_endif
+
+	_if _self.allow_background_process?
+	_then
+		# Add button to cancel sorting and group by
+		_if _not l_empty?
+		_then
+			separator_item.new( l_popup_menu )
+		_endif
+		.items[:interrupt_item] << button_item.new( l_popup_menu,
+							    l_style_holder.message(:interrupt_sort_or_group),
+							    _self,
+							    :|interrupt_sort_or_group()|,
+							    :visibility, _false )
+		l_empty? << _false 
+	_endif
+	
+	>> _if l_empty?
+	   _then
+		   >> _self.popup_menu
+	   _else
+		   >> l_popup_menu 
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic)
+_method tree_item.popup_menu
+	## Create and return the popup menu for use within _self's
+	## window. This is the popup menu if the end-user right mouse
+	## clicks in the data area, i.e. not in the column-headings.
+	## It defaults to self.default_popup_menu
+	_if ((l_popup_menu << .popup_menu) _is :default)
+	_then
+		l_popup_menu << .popup_menu << _self.default_popup_menu
+	_endif
+	>> l_popup_menu
+_endmethod
+$
+
+_pragma(classify_level=basic)
+_method tree_item.popup_menu << p_new
+	## The popup menu if the end-user right mouse clicks in the
+	## data area, i.e. not in the column-headings.
+	## This defaults to self.default_popup_menu
+	.popup_menu << p_new
+_endmethod
+$
+
+_pragma(classify_level=basic)
+_method tree_item.headings_popup_menu
+	## Create and return the popup menu for use within _self's
+	## window's column headings. This is the popup menu if the
+	## end-user right mouse clicks in the column headings area. 
+	## It defaults to self.default_headings_popup_menu
+	_if ((l_popup_menu << .headings_popup_menu) _is :default)
+	_then
+		l_popup_menu << .headings_popup_menu << _self.default_headings_popup_menu
+	_endif
+	>> l_popup_menu
+_endmethod
+$
+
+_pragma(classify_level=basic)
+_method tree_item.headings_popup_menu << p_new
+	## The popup menu if the end-user right mouse clicks in the
+	## column headings area. 
+	## This defaults to self.default_headings_popup_menu
+	.headings_popup_menu << p_new
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={external})
+_method tree_item.next_element_starting_with(p_lowercase_char, _optional p_wrap?)
+	## Parameters    : P_LOWERCASE_CHAR: Start character of a
+	##                    display_tree we want to find.
+	##                 [P_WRAP?]: If _true (default), and we found nothing
+	## Returns       : _unset if nothing is found, otherwise:
+	##                 1) display_tree that is found
+	##                 2) its row index
+	##                 3) the number of the first visible column
+	## Function      : Start searching where the current selection ends.
+	##                 For earch tree, retrieve the text in the
+	##                 first searchable column. (See .searchable_column_id)
+	##                 If the lowercase first non-space character matches
+	##                 P_LOWERCASE_CHAR, we have found the next tree.
+	##                 If we are allowed to P_WRAP? and we did not
+	##                 find anything, start searching from the top.
+	_local l_sel << _self.selection, l_start_index << _if _not l_sel.empty? _then >> l_sel.end_row + 1 _endif
+	_local l_col << _self.headings_holder.searchable_column_id
+	_local l_tree_renderer << _self.tree_renderer
+	
+	_for i_tree, i_index _over .tree_manager.fast_visible_trees(l_start_index)
+	_loop
+		_if _self.key_press_matches_charvec?(i_tree.as_charvec(l_col),p_lowercase_char)
+		_then
+			_return (i_tree, i_index, l_col)
+		_endif 
+	_endloop
+	_if (p_wrap? _is _false) _orif (l_start_index _is _unset) _then _return _endif
+	_for i_tree, i_index _over .tree_manager.fast_visible_trees()
+	_loop
+		_if _self.key_press_matches_charvec?(i_tree.as_charvec(l_col),p_lowercase_char)
+		_then
+			_return (i_tree, i_index, l_col)
+		_elif i_index = l_start_index
+		_then
+			_return
+		_endif 
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_item.next_element_matching(p_pattern, _optional p_wrap?)
+	##
+	## Returns the next visible element in the list that matches
+	## a_string.
+	## If wrap? is true (default) the search will be performed
+	## with wrapping.
+	## The format of the returned element is determined by
+	## elements_matching() which is used to determine the next
+	## element. See elements_matching() for more information.
+	
+	_local l_sel << _self.selection
+	
+	_if _not l_sel.empty?
+	_then 
+		pos << .tree_manager.index_of_tree(l_sel.end_tree)
+	_else
+		pos << 0
+	_endif
+	
+	_for i_tree _over _self.elements_matching(p_pattern)
+	_loop
+		tree_pos << .tree_manager.index_of_tree(i_tree)
+		_if tree_pos _isnt _unset _andif tree_pos > pos
+		_then _return i_tree
+		_endif 
+	_endloop
+
+	_if (p_wrap? _is _false) _orif (pos _is 0)
+	_then
+		_return
+	_endif
+
+	_for i_tree _over _self.elements_matching(p_pattern)
+	_loop
+		tree_pos << .tree_manager.index_of_tree(i_tree)
+		_if tree_pos _isnt _unset _andif tree_pos < pos
+		_then _return i_tree
+		_endif 
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_iter _method tree_item.elements_matching(p_pattern, _optional p_start_index, p_end_index)
+	## Will yield all elements of this tree_item matching
+	## P_PATTERN. It will search into collapsed trees as well in order to
+	## process *all* known trees.
+	## If optionally P_START_INDEX and P_END_INDEX are specified,
+	## they will limit the number of first level trees being sourght.
+	p_pattern << p_pattern.canonical
+	_for i_child, i_child_index _over .tree_manager.fast_children(p_start_index)
+	_loop
+		_if (p_end_index _isnt _unset) _andif (i_child_index > p_end_index) _then _leave _endif
+		_for i_tree _over i_child.fast_depth_first()
+		_loop
+			_if i_tree.matches?(p_pattern)
+			_then
+				_loopbody (i_tree)
+			_endif 
+		_endloop
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_item.set_elements_current(p_elements)
+	##
+	## Sets the elements given as the current elements. P_ELEMENTS
+	## must be a list of elements that occur in this list_view's
+	## list.
+
+	_local l_selection << _self.selection
+	l_selection.empty()
+
+	_if _not p_elements.empty?
+	_then
+		# set new selection
+		l_selection.add_all(p_elements)
+		
+		# only ensure row visibility if there is a selection
+		_self.ensure_row_visibility(l_selection.start_row)
+	_endif
+	
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_item.ensure_visibility(p_row_index, p_col_index, _optional p_end_row_index, p_end_col_index)
+	## Parameters    : P_ROW_INDEX: Index of first row we want to
+	##                    be at least visible.
+	##                 P_COL_INDEX: Index of left most column we want to
+	##                    be at least visible.
+	##                 [P_END_ROW_INDEX]: Optional index of last
+	##                    row we would like to be visible.
+	##                 [P_END_COL_INDEX]: Optional index of right most
+	##                    column we would like to be visible.
+	## Returns       : _true if we scrolled, _false otherwise
+	## Function      : Make sure that P_ROW_INDEX and P_COL_INDEX
+	##                 are visible. If possible, the same for
+	##                 P_END_ROW_INDEX and P_END_COL_INDEX. 
+	## Methodology   : Note that .ensure_col_visibility() is not yet implemented!
+	# note the _or that is not an _orif since both calls need to be made
+	>> _self.ensure_row_visibility(p_row_index, p_end_row_index) _or
+	   _self.ensure_col_visibility(p_col_index, p_end_col_index)
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_item.ensure_row_visibility(p_row_index, _optional p_end_row_index)
+	## Parameters    : P_ROW_INDEX: Index of first row we want to
+	##                    be at least visible.
+	##                 [P_END_ROW_INDEX]: Optional index of last
+	##                    row we would like to be visible.
+	## Returns       : _true if we scrolled (vertically), _false otherwise
+	## Function      : Make sure that P_ROW_INDEX is visible, and
+	##                 scroll if necessary. If possible try to make
+	##                 P_END_ROW_INDEX visible as well.
+	_if _not _self.realised? _then _return _false _endif
+	_local l_done? << _true 
+	# correct for truly visible rows
+	_local l_row_height << .row_height, l_height << _self.height
+	l_height -<< .col_headings_height + (l_height _mod l_row_height)
+	# compute current y data
+	l_current_start_y << _self.vertical_position
+	l_current_end_y   << l_current_start_y + l_height
+#	write("CURRENT:   ", l_current_start_y, " <-> ", l_current_end_y)
+	# compute desired y data
+	l_desired_start_y << ((p_row_index - 1) * l_row_height).min(_self.v_doc_size - l_row_height + _self.scrollbar_correction_factor).max(0)
+	_if (p_end_row_index _is _unset)
+	_then
+		l_desired_end_y << l_desired_start_y + l_row_height
+	_elif (p_end_row_index > p_row_index)
+	_then
+		_local l_range << p_end_row_index - p_row_index + 1
+		l_desired_end_y << (l_desired_start_y + (l_range * l_row_height).min(l_height)).max(0)
+	_else
+		_local l_range << p_row_index - p_end_row_index + 1
+		l_desired_end_y << l_desired_start_y + l_row_height
+		l_desired_start_y << (l_desired_end_y - (l_range * l_row_height).min(l_height)).max(0)
+	_endif
+	# check if we should swap (end is higher than start)
+	_if (l_desired_start_y > l_desired_end_y)
+	_then
+		(l_desired_start_y, l_desired_end_y) << (l_desired_end_y, l_desired_start_y)
+	_endif
+#	write("DESIRED:   ", l_desired_start_y, " <-> ", l_desired_end_y)
+	# check if we sould shift down
+	_if (l_desired_start_y < l_current_start_y)
+	_then
+		_self.vertical_position << l_desired_start_y
+	# check if we should shift up
+	_elif (l_desired_end_y > l_current_end_y)
+	_then
+		# shift up the minimum required 
+		_self.vertical_position << (l_desired_end_y - l_height).max(0)
+	_else
+		l_done? << _false 
+	_endif
+	# wait till window system is ready. It seems that directly
+	# after repositioning the vertical_scrollbar, in very rare
+	# occasions, we cannot draw immediately (causing a primitive
+	# error if we try to). 
+	# This problem appeared only on some old computers.
+	# It seems that calling self.realised? gives it enough time to
+	# get ready for the next draw instruction.
+	_if _not _self.realised?
+	_then
+		# in some case, on some system, after setting the vertical position, the window is 'out' for a while
+		write("Slow graphics detected..., may be it is the graphic driver?")
+	_endif 
+	>> l_done?
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_item.ensure_col_visibility(p_col_index, _optional p_end_col_index)
+	## Parameters    : P_COL_INDEX: Index of left most column we want to
+	##                    be at least visible.
+	##                 [P_END_COL_INDEX]: Optional index of right most
+	##                    column we would like to be visible.
+	## Returns       : _true if we scrolled (horizontally), _false otherwise
+	## Function      : Make sure that P_COL_INDEX is visible, and
+	##                 scroll if necessary. If possible try to make
+	##                 P_END_COL_INDEX visible as well.
+	## Function      : 
+	## Methodology   : NOT IMPLEMENTED YET
+	# ToDo
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.visible_cols << p_new
+	## Parameters    : P_NEW: New width in average width of a character.
+	## Returns       : P_NEW
+	## Function      : Set self's width to be P_NEW times the
+	##                 standard col_width.
+	>> _self.width_in_chars << p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.renderer
+	## Returns self's display_tree_renderer
+	>> .tree_renderer
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.canvas
+	## Returns self's drawing surface, which is self
+	>> _self
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.visible_cols
+	## Parameters    : 
+	## Returns       : Self's width expressed as the 'average'
+	##                 number of characters that fit on a line. For
+	##                 this, the default font's cell width is used.
+	## Function      : 
+	>> _self.width_in_chars
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method tree_item.facade_properties
+	## Returns a list of all properties understood by contained classes.
+	_local l_facade_properties << set.new_from(.tree_manager.exported_properties)
+	l_facade_properties.add_all(_self.renderer.exported_properties)
+	l_facade_properties.add_all(_self.heading_renderer.exported_properties)
+	l_facade_properties.add_all(_self.headings_holder.exported_properties)
+	l_facade_properties.add_all(_self.style_holder.exported_properties)
+	l_facade_properties.add_all(_self.selection.exported_properties) 
+	l_facade_properties.add_all(tree_agent.exported_properties) 
+	>> l_facade_properties
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.visible_rows << p_new
+	## Parameters    : P_NEW: New height in rows being visible.
+	## Returns       : P_NEW
+	## Function      : To set self's height by taking into account
+	##                 the standard rowheight and the height used
+	##                 by the headings.
+	## Important     : This function is likely to change meaning in
+	##                 future releases:
+	_self.height << .col_headings_height + .row_height * 1.max(p_new)
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_item.ensure_selection_visibility()
+	## Parameters    : -
+	## Returns       : _true if we scrolled (either horizontally or
+	##                 vertically), _false otherwise
+	## Function      : Ensures that the row on which the current
+	##                 selection is, is in self's visible area.
+	>> _self.ensure_row_visibility(_self.selection.start_row)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method tree_item.int!width_needed_for_cols(p_nr_of_columns)
+	## Parameters    : P_NR_OF_COLUMNS: Number of columns that will be visible.
+	## Returns       : The width self must have in order to show
+	##                 P_NR_OF_COLUMNS column. Does not take into
+	##                 account, column ordering, or column
+	##                 visibilities, horizontal position etc.
+	## Function      :
+	_local l_col_widths << _self.headings_holder.column_widths
+	_local l_width << _self.headings_holder.row_headings_width
+	_for i_column_index _over 1.upto(p_nr_of_columns.min(l_col_widths.size))
+	_loop
+		l_width +<< l_col_widths[i_column_index]
+	_endloop
+	>> l_width
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.height_in_chars << p_new
+	## Parameters    : P_NEW: New height in rows being visible.
+	## Returns       : P_NEW
+	## Function      : To set self's height by taking into account
+	##                 the standard rowheight and the height used
+	##                 by the headings.
+	_self.height << .row_height * 1.max(p_new)
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.width_in_cols << p_new
+	## Parameters    : P_NEW: Number of columns that will be visible.
+	## Returns       : 
+	## Function      : Changes self's width such that
+	##                 P_NEW columns will be shown. Does not take into
+	##                 account, column ordering, or column
+	##                 visibilities, horizontal position etc.
+	## Usage         : This property mainly makes sense to specify
+	##                 on creation.
+	_self.width << _self.int!width_needed_for_cols(p_new)
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.width_in_chars << p_new
+	## Parameters    : P_NEW: New width in average width of a character.
+	## Returns       : P_NEW
+	## Function      : Set self's width to be P_NEW times the
+	##                 standard col_width.
+	_self.width << p_new * _self.style_holder.col_width
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.height_in_chars
+	## Parameters    : 
+	## Returns       : The number of row that are occupied by the
+	##                 visible display trees. Is always at least 1.
+	## Function      : 
+	## Methodology   :
+	>> 1.max(_self.height _div .row_height)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.width_in_chars
+	## Parameters    : 
+	## Returns       : Self's width expressed as the 'average'
+	##                 number of characters that fit on a line. For
+	##                 this, the default font's cell width is used.
+	## Function      : 
+	>> _self.width _div _self.style_holder.col_width
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.width_in_cols
+	## Parameters    : 
+	## Returns       : The number of columns that would be visible
+	##                 if we were entirely scrolled to the left, and all
+	##                 column_visibilities would be set to _true.
+	## Function      :
+	## Usage         : This property mainly makes sense to specify
+	##                 on creation.
+	_local l_my_width << _self.width
+	_local l_col_widths << _self.headings_holder.column_widths
+	_local l_x << _self.headings_holder.row_headings_width
+	_local l_max << 0
+	_for i_column_index _over 1.upto(l_col_widths.size)
+	_loop
+		l_max << i_column_index
+		l_x +<< l_col_widths[i_column_index]
+		# check if this column is still included...
+		_if (l_x >= l_my_width) _then _leave _endif
+	_endloop
+	>> l_max
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.check_width()
+	## Parameters    : 
+	## Returns       : True is self's width has been updated *and*
+	##                 it is known to cause a damaged event; since
+	##                 at this moment we cannot predict this for sure,
+	##                 we always return _false. This might change
+	##                 in future.
+	## Function      : If a tree_item has a single column,
+	## this column will always be scaled to fit the window and its contents.
+	## This is regardsless to the fact whether it has headings or not.
+	##
+	## Two situations can be discerned:
+	## 1) :distribute_spare_width = :always
+	##    The single column will always scale to the available room,
+	##    with a minimum of .column_min_widhts(1)
+	##    If the contents displayed are wider, then they are
+	##    truncated with the ...
+	##
+	## 2) :distribute_spare_width <> :always
+	##    The single column will always scale to the available room,
+	##    with a minimum of the contents of that single column.
+	##    If the column is to wide for the tree_item's width,
+	##    a horizontal scrollbar will appear.
+	_local l_headings_holder << _self.headings_holder
+	_if (l_headings_holder.number_of_columns = 1) _andif (l_headings_holder.distribute_spare_width _isnt :always) _andif (_self.tree_manager.data_access_type _isnt :streamed)
+	_then
+		_local l_tree_renderer << _self.tree_renderer
+		_local l_opt_width << 0
+		_for i_tree, i_index _over _self.tree_manager.fast_visible_trees()
+		_loop
+			l_tree_renderer.value_holder << i_tree
+			l_opt_width << l_opt_width.max(l_tree_renderer.optimal_column_width(1))
+		_endloop
+		l_headings_holder.column_min_width(1) << l_opt_width
+		_return _self.int!check_width()
+	_endif
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.int!redraw_no_data()
+	##
+	## Redraws the data area of the canvas when there is no data.
+	##
+	_if .message_on_no_data?
+	_then
+		# Draw a message on the canvas.
+		# The message is vertically positioned to appear centred on the
+		# line dividing row 1 and row 2.
+		# The message is horizontally positioned to appear horizontally
+		# centred when the horizontal scroll bar is moved fully to the
+		# left (or when there is no horizontal scroll bar).
+		# If the user scrolls to the right the text will scroll off the
+		# canvas.
+		.tree_renderer.render_text(0, .col_headings_height + .row_height _div 2,
+					   _self.width, .row_height,
+					   _self.style_holder.message(:no_display_data_available), :centre)
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.redraw_selection( p_trees )
+	## 
+	## Redraws trees that are visible and included P_TREES.
+	## Performs the redraw in a background thread if appropriate.
+
+	_self.background_process( :|process_redraw_selection()|, p_trees )
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.int!redraw(p_xpos, p_ypos, p_xmax, p_ymax, p_current_index)
+	##
+	## Parameters    : P_XPOS, P_YPOS: Top left position of area to redraw
+	##                 P_XMAX, P_YMAX: Max values in hor/ver direction.
+	##                 P_CURRENT_INDEX: Index of first tree that
+	##                    needs redrawing.
+	## Returns       : 
+	## Function      : Redraw all trees in a certain area, starting
+	##                 with tree denoted by index P_CURRENT_INDEX.
+
+	_local l_renderer_notifier << .renderer_notifier
+	_local l_tree_renderer << _self.tree_renderer
+
+	_local l_selection << _self.selection
+	_local l_focus_tree << l_selection.focus_tree
+
+	_for i_tree, i_index _over .tree_manager.fast_visible_trees(p_current_index)
+	_loop
+		_if i_tree _is l_focus_tree
+		_then
+			l_focus_index << i_index
+		_endif
+		
+		# p_ymax is not included in the area that we need to draw
+		_if ((l_ypos << _self.int!ypos_for(i_index)) >= p_ymax) _then _leave _endif
+		
+		# allow user to set a different renderer
+		_if (l_renderer_notifier _isnt _unset)
+		_then
+			l_tree_renderer << l_renderer_notifier(i_tree, _self)
+		_endif
+		l_tree_renderer.value_holder << i_tree
+		l_tree_renderer.render(p_xpos, l_ypos, p_xmax, p_ymax, i_index)
+	_endloop
+	
+	_if .show_focus? _andif .has_focus? _andif l_selection.empty? _andif
+	    l_focus_index _isnt _unset _andif
+	    ( l_ypos << _self.int!ypos_for(l_focus_index) ) < p_ymax
+	_then
+		l_tree_renderer << _self.tree_renderer
+		l_tree_renderer.value_holder << l_focus_tree
+		l_tree_renderer.render_focus_border(l_ypos, l_selection.focus_column)
+	_endif
+	
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.select_notifier
+	## The select_notifier is called after the selection changed, and
+	## after it has been drawn, to allow the api-user take
+	## appropriate actions for the new selection
+	##
+	## The notifier will pass display_tree_selection as the first
+	## argument, and a boolean denoting if the change has been made
+	## by the end-user. So _true means the end user has caused an
+	## event that set, toggled or extended the selection, and
+	## _false means that some code added or removed things from the
+	## selection. If both kind of changes happen, than _true
+	## (i.e. end-user made a change) will prevail.
+	## 
+	## The notifier has to be of the class handler, or
+	## alternatively, when :model is passed as a property at the same time,
+	## can be a symbol or simple_vector that will be send to this model.
+	>> _self.selection.select_notifier
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.pre_select_notifier
+	## The pre_select_notifier is called after then selection changed,
+	## but before it is drawn, thus giving the api-user an
+	## execellent opportunity to .remove invalid selections.
+	## (After this, the verified selection will be drawn and
+	## notified with the .select_notifier.)
+	##
+	## The notifier will pass display_tree_selection as the first
+	## argument, and a boolean denoting if the change has been made
+	## by the end-user. So _true means the end user has caused an
+	## event that set, toggled or extended the selection, and
+	## _false means that some code added or removed things from the
+	## selection. If both kind of changes happen, than _true
+	## (i.e. end-user made a change) will prevail.
+	## 
+	## The notifier has to be of the class handler, or
+	## alternatively, when :model is passed as a property at the same time,
+	## can be a symbol or simple_vector that will be send to this model.
+	>> _self.selection.pre_select_notifier
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.pre_select_notifier << p_new
+	## Parameters    : P_NEW: Gives the new pre_select_notifier.
+	##
+	## The pre_select_notifier is called after then selection changed,
+	## but before it is drawn, thus giving the api-user an
+	## execellent opportunity to .remove invalid selections.
+	## (After this, the verified selection will be drawn and
+	## notified with the .select_notifier.)
+	##
+	## The notifier will pass display_tree_selection as the first
+	## argument, and a boolean denoting if the change has been made
+	## by the end-user. So _true means the end user has caused an
+	## event that set, toggled or extended the selection, and
+	## _false means that some code added or removed things from the
+	## selection. If both kind of changes happen, than _true
+	## (i.e. end-user made a change) will prevail.
+	## 
+	## The notifier has to be of the class handler, or
+	## alternatively, when :model is passed as a property at the same time,
+	## can be a symbol or simple_vector that will be send to this model.
+	>> _self.selection.pre_select_notifier << p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.cell_selection? << p_new?
+	## Parameters    : P_NEW: Gives the new cell_selection.
+	##
+	## When cell_selection is set to _true (it is _false by
+	## default), the user is allowed to select cells rather 
+	## than rows. Still, the elements contained in the
+	## display_tree_selection will be .display_trees, of which *at
+	## least* one cell has been selected.
+	## (To retrieve which cells, send the iter method
+	## .selected_columns() to an selected display tree.)
+	>> _self.selection.cell_selection? << p_new?
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.cell_selection?
+	## When cell_selection is set to _true (it is _false by
+	## default), the user is allowed to select cells rather 
+	## than rows. Still, the elements contained in the
+	## display_tree_selection will be .display_trees, of which *at
+	## least* one cell has been selected.
+	## (To retrieve which cells, send the iter method
+	## .selected_columns() to an selected display tree.)
+	>> _self.selection.cell_selection?
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.select_notifier << p_new
+	## Parameters    : P_NEW: Gives the new select_notifier.
+	##
+	## The select_notifier is called after the selection changed, and
+	## after it has been drawn, to allow the api-user take
+	## appropriate actions for the new selection
+	##
+	## The notifier will pass display_tree_selection as the first
+	## argument, and a boolean denoting if the change has been made
+	## by the end-user. So _true means the end user has caused an
+	## event that set, toggled or extended the selection, and
+	## _false means that some code added or removed things from the
+	## selection. If both kind of changes happen, than _true
+	## (i.e. end-user made a change) will prevail.
+	## 
+	## The notifier has to be of the class handler, or
+	## alternatively, when :model is passed as a property at the same time,
+	## can be a symbol or simple_vector that will be send to this model.
+	>> _self.selection.select_notifier << p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.mode
+	## Three select modes are supported: :none, :one and :many (default), 
+	## that allow respectively 0, 0-1 and 0-n display trees to be selected.
+	## Note that there is not a mode for 'exacly one' since there
+	## will be always situations where it is not possible to have
+	## one selected (e.g. when there are no elements at all!)
+	##
+	## In case .cell_selection? is true, _self will contain those
+	## display_trees for which at least one cell is selected.
+	>> _self.selection.mode
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.mode << p_new
+	## Parameters    : P_NEW: Gives the new mode.
+	##
+	## Three select modes are supported: :none, :one and :many, 
+	## that allow respectively 0, 0-1 and 0-n display trees to be selected.
+	## Note that there is not a mode for 'exacly one' since there
+	## will be always situations where it is not possible to have
+	## one selected (e.g. when there are no elements at all!)
+	##
+	## In case .cell_selection? is true, _self will contain those
+	## display_trees for which at least one cell is selected.
+	##
+	## A .change notification for :allow_multiple? with boolean (p_new _is :many)
+	## Condition :error is raised when an invalid mode is passed.
+	>> _self.selection.mode << p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.set_column_headings(_gather p_key_values)
+	## Parameters    : P_KEY_VALUES: 
+	## :retain_headings_popup_menu?: If false (default) then the
+	##    current headings popup menu is discarded.
+	## :column_headings : simple_vector containing texts that
+	##    identify the columns to the user; if not supplied, they will
+	##    be derived using :column_heading_ids (and preferably :model's
+	##    message_accessor)
+	## :column_heading_ids : simple_vector containing IDs to
+	##    identify the columns with. If a model is known, they can
+	##    be automatically translated into :column_headings.
+	## :column_headings_styled_strings : Vector of simple_vectors
+	##    with contents that are acceptable to generate
+	##    styled_strings of. These will be used as heading texts in
+	##    the column headings. For four columns showing mail, an example could be:
+	##    {{:image, :send_priority}, {:image, :read_status}, {"From"}, "Subject"}.
+	##    Needs to have the same number of entries as there are columns.
+	## :column_widths : Vector of widths for the columns as they
+	##    will be used for drawing.
+	## :column_min_widths : Vector of minimal widths for the
+	##    columns that the columns; the end user cannot make a
+	##    column smaller than this value, during resizing.
+	## :column_visibilities : Vector of booleans that denotes which
+	##    columns will be drawn (visible) or hidden. Needs to have
+	##    the same number of entries as there are columns.
+	## :column_alignments : Vector with alignment values for each
+	##    column, each on of {:left, :right, :centre (or
+	##    :center)}. Needs to have the same number of entries as there are columns.
+	## :column_selectabilities: Vector of booleans that denotes which
+	##    columns have selectable cells. The default for each
+	##    column is true, and if it is false it will be drawn in a
+	##    special way (similar to a row headings). Needs to have
+	##    the same number of entries as there are columns.
+	## :column_allow_sort? : if _true (default, unless
+	##    :cell_selection? is _false, in which case it defaults to
+	##    false), then the rows (display_trees) will be sorted when
+	##    the user clicks on the column heading; if _false, then the
+	##    user can select the column by doing this (if
+	##    :cell_selection is :false, all will be selected.)
+	## :column_sort_selectors : contains the order procedures and
+	##    their arguments per column used for sorting. An order procedure can be a
+	##    procedure, or a name known by sorted_collection. The default
+	##    is {{:display_tree, <column_number>}, ...}
+	## :value_formatters : List with {<name>, <formatter>, [<unit_display_group>]}
+	##    where <name> is a value_id, causing the formatter to be applied when
+	##    the a value following :value in the styled_string is retrieved.
+	##    <formatter> is a (sub)class of string_format, or a procedure
+	##    or a handler, returning a string;
+	##    <unit_display_group> is optional and used to retrieve 
+	##    .sorted_unit_formats_and_strings() to
+	##    get alternatives the end-user can select with a right-mouse
+	##    click in the column headings.
+	##    For <unit_display_group> to work, make sure <name>
+	##    corresponds to the column_heading_id.
+	## :distribute_spare_width : Denotes the fractions with which
+	##    columns will resize when the end-user resizes the
+	##    columns. For example, if one has 5 columns, and column 2
+	##    should resize half as much as column 5, whereas the other
+	##    columns should not resize at all, then the
+	##    :col_resize_values could be {0, 33, 0, 0, 67}. 
+	##    (It is not strictly necessary the values add up to 100, but
+	##    that is more consistent with the other :col_resize_values
+	##    elsewhere in the product).
+	## :column_orderings: The ordering of the columns; The default
+	##    value is {1, 2, ..., n} in case of n columns.
+	## :column_allow_group_by_values:
+	##    Either _unset, if items cannot be grouped by a certain column,
+	##    or a vector of booleans corresponding to the number of columns.
+	##    In this _true (on the n-th position) means the end-user may
+	##    group the display trees displayed at the first level by the
+	##    values displayed on the n-th column
+	##    Note that this property is only set if we are not keeping
+	##    an existing headings popup menu (see :retain_headings_popup_menu?)
+	## :column_pick_lists:
+	##    Denotes the values per column, that can be used to slice the
+	##    displayed data. This pick-lists can be used for filtering
+	##    (when enabled), as well as for grouping (when
+	##    tree_item.column_allow_group_by_values is _true for the corresponding
+	##    column). 
+	##    This should be specified as a vector, as are the other
+	##    column properties. If an entry for the nth column is unset,
+	##    it means it does not have a-priori values available to group
+	##    by. If it is specified, this will consist of a vector of
+	##    items; see sw_action for a specification of items (an item
+	##    can be a {<value>, <string>}. Alternatively, this may be a
+	##    handler that returns such a list of items.
+	## Returns       : -
+	## Function      : Set a whole set of properties for column headings in one go,
+	##    thus avoiding inconsistency problems in between
+	##    (e.g. when :column_heading_ids have changed but some
+	##    other props have been set yet).
+	##    Properties mentioned above that are not supplied, will be
+	##    set to the default again (except for :value_formatters).
+
+
+	
+	_dynamic !updating_trees?! << _true 
+	_local l_props << property_list.new_with(_scatter p_key_values)
+	_local l_column_headings << l_props[:column_headings]
+	_local l_column_heading_ids << l_props[:column_heading_ids]
+	_local l_column_sort_selectors << l_props[:column_sort_selectors]
+	_local l_dist_sw << l_props[:distribute_spare_width]
+	_if (l_column_headings _is _unset) _andif (l_column_heading_ids _is _unset)
+	_then
+		condition.raise(:error, :string, "Specify at least :column_headings or :column_heading_ids")
+	_endif
+	_if (l_props[:retain_headings_popup_menu?] _isnt _true) _orif (.headings_popup_menu _is :default)
+	_then
+		# it is not use to have an inconsistency between the popup-menu
+		# and the column_allow_group_by_values.
+		_self.column_allow_group_by_values << l_props[:column_allow_group_by_values]
+		.headings_popup_menu << :default
+	_endif
+	_local l_hh << _self.headings_holder
+	l_hh.column_headings <<                l_column_headings
+	l_hh.column_heading_ids <<             l_column_heading_ids
+	l_hh.column_widths <<                  l_props[:column_widths]
+	l_hh.column_min_widths <<              l_props[:column_min_widths]
+	l_hh.column_visibilities <<            l_props[:column_visibilities]
+	l_hh.column_orderings <<               l_props[:column_orderings]
+	l_hh.column_alignments <<              l_props[:column_alignments]
+	l_hh.column_selectabilities <<         l_props[:column_selectabilities]
+	l_hh.column_headings_styled_strings << l_props[:column_headings_styled_strings]
+	l_hh.column_pick_lists <<              l_props[:column_pick_lists]
+	_if (l_dist_sw _isnt _unset)
+	_then
+		l_hh.distribute_spare_width << l_dist_sw
+	_endif
+	_if (l_column_sort_selectors _is _unset)
+	_then
+		l_hh.column_allow_sort? <<     l_props[:column_allow_sort?].default(_not _self.selection.cell_selection?)
+	_else 
+		l_hh.column_allow_sort? <<     _true 
+		l_hh.column_sort_selectors <<  l_column_sort_selectors
+	_endif
+	_local l_vfs << l_props[:value_formatters]
+	_if (l_vfs _isnt _unset)
+	_then
+		_self.style_holder.value_formatters << l_vfs
+	_endif
+	.heading_renderer.row_height << .col_headings_height << l_hh.height
+	_self.changed( :column_headings )
+	
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.v_doc_size << new_value
+	## Set the height of the sub window to NEW_VALUE pixels.
+	_self.cache_scrolling_attributes()
+	new_value << 0.check_type(new_value)
+	_if .v_doc_size = new_value _then _return _endif
+	_if new_value < 0
+	_then _self.error("Invalid value for document size")
+	_endif
+	.v_doc_size << _self.update_vertical_scrollbar(:|quiet_v_doc_size<<|,new_value)	
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.h_doc_size << new_value
+	## Set the width of the sub window to NEW_VALUE pixels.
+	_self.cache_scrolling_attributes()
+	new_value << 0.check_type(new_value)
+	_if .h_doc_size = new_value _then _return _endif
+	_if new_value < 0 
+	_then _self.error("Invalid value for document size")
+	_endif
+	.h_doc_size << _self.update_horizontal_scrollbar(:|quiet_h_doc_size<<|,new_value)	
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.cell_info(_optional p_tree, p_row_index, p_column_index, p_end_column_index)
+	## Parameters    : P_TREE: Tree for which we want information,
+	##                    if _unset P_ROW_INDEX: is used to retrieve this tree.
+	##                 P_ROW_INDEX: Row of P_TREE, if _unset it is
+	##                    computed from P_TREE.
+	##                 P_COLUMN_INDEX: Defaults to 1.
+	##                 P_END_COLUMN_INDEX: If not unset, then we'll
+	##                    yield the merged cell data.
+	## Returns       : 1) Left bounds of cell
+	##                 2) Top bounds of cell
+	##                 3) Right bounds of cell
+	##                 4) Bottom bounds of cell
+	##                 5) Default alignment in cell
+	##                 6) Tree displayed in cell
+	##                 7) Index of row of cell
+	##                 8) Index of column of cell
+	# check parameters
+	_if (p_tree _is _unset)
+	_then
+		_self.tree_manager.nth_tree(p_row_index)
+	_elif (p_row_index _is _unset)
+	_then
+		_self.tree_manager.index_of_tree(p_tree)
+	_endif
+	p_column_index << p_column_index.default(1)
+	# get position...
+	_local (l_left, l_right, l_vis?, l_align, l_sel?) <<
+		_if (p_end_column_index _is _unset)
+		_then
+			>> _self.headings_holder.tab_info(p_column_index)
+		_else 
+			>> _self.headings_holder.merged_tab_info(p_column_index, p_end_column_index - p_column_index + 1)
+		_endif
+	_local l_row_height << .row_height
+	_local l_y << .discrete_y_fudge + l_row_height * (p_row_index - 1)
+	>> (l_left, l_y, l_right, l_y + l_row_height, l_align, p_tree, p_row_index, p_column_index)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.cell_info_at(p_x, p_y)
+	## Parameters    : P_X: Horizontal pixel position on the internal window.
+	##                 P_Y: Vertical pixel position on the internal window.
+	## Returns       : 1) Left bounds of cell
+	##                 2) Top bounds of cell
+	##                 3) Right bounds of cell
+	##                 4) Bottom bounds of cell
+	##                 5) Default alignment in cell
+	##                 6) Tree displayed in cell
+	##                 7) Index of row of cell
+	##                 8) Index of column of cell
+	_local l_column_no << .agent.column_at(p_x)
+	_local (l_left, l_right, l_vis?, l_align, l_sel?) << _self.headings_holder.tab_info(l_column_no)
+	_local (l_row, l_in_col_headings?, l_row_index, l_remainder) << _self.row_at(p_y)
+	p_y -<< l_remainder
+	>> (l_left, p_y, l_right, p_y + .row_height, l_align, l_row, l_row_index, l_column_no)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method tree_item.int!check_width()
+	## Parameters    : 
+	## Returns       : True is self's width has been updated *and*
+	##                 it is known to cause a damaged event; since
+	##                 at this moment we cannot predict this for sure,
+	##                 we always return _false. This might change
+	##                 in future.
+	## Function      : Check if we have to auto size the
+	##                 only/single column, and do so if necessary.
+	_local l_headings_holder << _self.headings_holder
+	_if (l_headings_holder.number_of_columns <> 1) _orif (l_headings_holder.distribute_spare_width _is :always)
+	_then
+		_return _false
+	_endif 
+	_local l_opt_width << l_headings_holder.column_min_width(1).max(_self.width - l_headings_holder.row_headings_width)
+	# check if the minimum width decreased, in which case, we might need to decrease the current width...
+	# set the new width, so scrollbar gets updated
+	_if (l_headings_holder.column_width(1) <> l_opt_width)
+	_then
+		l_headings_holder.column_width(1) << l_opt_width
+		# _return _true
+	_endif
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item.int!editable_value_at(p_x, p_y, p_tree, p_row_index, p_editor_selector)
+	## Parameters    : P_X, P_Y: Position at which we want to find
+	##                    something we can edit.
+	##                 P_TREE: A display tree
+	##                 P_ROW_INDEX: Row on which P_TREE appears.
+	##                 P_EDITOR_SELECTOR: Use to retrieve an editor for a canditate
+	##                    <value_id>. If the P_EDITOR_SELECTOR returns unset, the
+	##                    search is continued.
+	##                    This handler will passed P_TREE, P_ROW_INDEX, and <value_id>
+	##                    and should return an editor for <value_id>, if we want it to
+	##                    be editable.
+	## Returns       : A tuple of:
+	##                 1) _true if an editable value has been found,
+	##                    _false otherwise
+	##                 2) value_id identifying that value
+	##                 3) editor that should be used to edit 2)
+	##                 4) text_style
+	##                 5) left position of where the value is currently displayed
+	##                 6) right position of where the value is currently displayed
+	##                 7) the (start) column in the value is displayed
+	##                 8) optionally, if we have merged cells, the end column where
+	##                    the value is displayed
+	##                 9) Whether we should start editing after (true) or
+	##                    in front of the value (false).
+	## Function      : Find an editable value for P_TREE at P_X, P_Y.
+	##                 Returns the necessary date to start editing.
+	#
+	_local l_tree_renderer << _self.tree_renderer
+	l_tree_renderer.value_holder << p_tree
+	#
+	_local l_value_found? << _false, l_best_value, l_best_editor, l_best_style, l_left, l_right, l_edit_at_end? << _false
+	_local l_column_no << 0, l_end_column, l_best_col, l_best_end_col
+	# loop over elements, to find the best editable value
+	_for i_x, i_y, i_text, i_text_style, i_type, i_width, i_height, i_value _over l_tree_renderer.positioned_texts_and_text_styles(0, 0)
+	_loop
+		_if (i_text_style _is :tab)
+		_then
+			l_column_no << _if (l_end_column _isnt _unset)
+				       _then >> (l_end_column ^<< _unset)
+				       _else >> l_column_no
+				       _endif + 1
+			_local l_column_max << i_x + i_width
+			_if (p_x > l_column_max)
+			_then
+				_continue _with _true
+			_elif (p_x < i_x)
+			_then
+				_leave 
+			_endif
+		_elif i_type _is :merge
+		_then
+			# we merge x-columns; if not specified we merge the rest
+			l_end_column << _if i_text _is _unset 
+					_then >> _self.selection.right_col
+					_else >> l_column_no + i_text - 1
+					_endif
+			l_column_no +<< i_text.default(1)
+		_elif i_type _is :value
+		_then
+			_local l_editor << p_editor_selector.invoke(p_tree, p_row_index, i_value, _self.agent)
+			_if (l_editor _is _unset)
+			_then
+				_continue
+			_elif _not l_value_found?
+			_then
+				
+				# this is the first value we find, and therefore the best sofar
+				l_value_found? << _true
+			_elif (_not p_y.in_range?(i_y, i_y + i_height))
+			_then
+				# this value is not any better, not on the right row
+				_continue 
+			_elif (p_x <= i_x)
+			_then 
+				# this value is not any better, it is on the right of the click
+				_continue 
+			_endif
+			l_best_value << i_value
+			l_best_editor << l_editor
+			l_best_style << i_text_style
+			l_right << (l_left << i_x) + i_width
+			l_best_col << l_column_no
+			l_best_end_col << l_end_column
+			l_edit_at_end? << (p_x >= (i_x + i_width))
+		_endif 
+	_endloop
+	>> (l_value_found?, l_best_value, l_best_editor, l_best_style, l_left, l_right, l_best_col, l_best_end_col, l_edit_at_end?)
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item.int!next_editable_value(p_tree, p_row_index, p_last_edited_value, p_editor_selector, _optional p_next?)
+	## Parameters    : P_TREE: A display tree
+	##                 P_ROW_INDEX: Row on which P_TREE appears.
+	##                 P_LAST_EDITED_VALUE: If not available, _unset may be passed
+	##                 P_EDITOR_SELECTOR: Use to retrieve an editor for a canditate
+	##                    <value_id>. If the P_EDITOR_SELECTOR returns unset, the
+	##                    search is continued.
+	##                    This handler will passed P_TREE, P_ROW_INDEX, and <value_id>
+	##                    and should return an editor for <value_id>, if we want it to
+	##                    be editable.
+	##                 P_NEXT?: If _false (true=default), then we
+	##                    won't return the 'next' editable value,
+	##                    but the same data for P_LAST_EDITED_VALUE.
+	##                    This is useful when the currently edited
+	##                    value needs its position updated. 
+	## Returns       : A tuple of:
+	##                 1) _true if an editable value has been found,
+	##                    _false otherwise
+	##                 2) value_id identifying that value
+	##                 3) editor that should be used to edit 2)
+	##                 4) text_style
+	##                 5) left position of where the value is currently displayed
+	##                 6) right position of where the value is currently displayed
+	##                 7) the (start) column in the value is displayed
+	##                 8) optionally, if we have merged cells, the end column where
+	##                    the value is displayed
+	## Function      : Find an editable value for P_TREE. If P_LAST_EDITED_VALUE: is
+	##                 provided, the next value after that will be tried to retrieve.
+	##                 Returns the necessary date to start editing.
+	p_next? << p_next?.default(_true)
+	_if p_tree.is_class_of?(styled_filter_renderer)
+	_then
+		l_tree_renderer << _self.filter_renderer
+	_else
+		l_tree_renderer << _self.tree_renderer
+		l_tree_renderer.value_holder << p_tree
+	_endif
+	_local l_value_found? << _false, l_best_value, l_best_style, l_left, l_right, l_best_column, l_best_end_column
+	_local l_column_no << 0, l_last? << _false, l_end_column
+	_local l_selection << _self.selection
+	_local l_check_sel? << l_selection.cell_selection?
+	# loop over elements, to find the best editable value
+	_for i_x, i_y, i_text, i_text_style, i_type, i_width, i_height, i_value _over l_tree_renderer.positioned_texts_and_text_styles(0, 0)
+	_loop
+		_if (i_text _is tab_char) 
+		_then
+			l_column_no << _if (l_end_column _isnt _unset)
+				       _then >> (l_end_column ^<< _unset)
+				       _else >> l_column_no
+				       _endif + 1
+		_elif i_type _is :merge
+		_then
+			# we merge x-columns; if not specified we merge the rest
+			l_end_column << _if i_text _is _unset 
+					_then >> l_selection.right_col
+					_else >> l_column_no + i_text - 1
+					_endif
+			l_column_no +<< i_text.default(1)
+		_elif l_check_sel? _andif _not p_tree.is_column_selected?(l_column_no)
+		_then
+			# skip till next column
+			_continue _with _true 
+		_elif i_type _is :value
+		_then
+			_local l_editor << p_editor_selector.invoke(p_tree, p_row_index, i_value, _self.agent)
+			_if (l_editor _is _unset)
+			_then
+				_continue
+			_elif _not l_value_found? _orif
+			      ((_not p_next?) _andif (i_value _is p_last_edited_value))
+			_then
+				l_value_found? << _true
+				l_best_value << i_value
+				l_best_editor << l_editor
+				l_best_style << i_text_style
+				l_best_column << l_column_no
+				l_best_end_column << l_end_column
+				l_right << (l_left << i_x) + i_width
+			_elif l_last?
+			_then
+				# we found the first value after the last value that has been edited
+				# since we want to return the next, we have finished
+				l_best_value << i_value
+				l_best_editor << l_editor
+				l_best_style << i_text_style
+				l_best_column << l_column_no
+				l_best_end_column << l_end_column
+				l_right << (l_left << i_x) + i_width
+				_leave
+			_endif
+			# check if this one matches P_LAST_EDITED_VALUE; if so, leave
+			# now (depending on P_NEXT?) or after the next match.
+			_if (l_last? << (i_value _is p_last_edited_value)) _andif (_not p_next?)
+			_then
+				_leave 
+			_endif
+			
+		_endif 
+	_endloop
+	>> (l_value_found?, l_best_value, l_best_editor, l_best_style, l_left, l_right, l_best_column, l_best_end_column)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={subclassable})
+_method tree_item.register_drag_source(p_tree_item, p_release_drag_notifier, _optional p_allow_drag_notifier)
+	## Parameters    : P_TREE_ITEM: Another tree-item that is a
+	##                    valid source to start dragging from to myself.
+	##                 P_RELEASE_DRAG_NOTIFIER: Notifier that is called
+	##                 [P_ALLOW_DRAG_NOTIFIER]: Default to always allowing.
+	## Returns       : -
+	## Function      : Registers P_TREE_ITEM as a valid control to
+	##                 start dragging from to _self. If dragging
+	##                 from P_TREE_ITEM onto _self is taking place,
+	##                 P_ALLOW_DRAG_NOTIFIER is called to ask if
+	##                 this is a valid drag position. When the dragging ends,
+	##                 P_RELEASE_DRAG_NOTIFIER is called to denote
+	##                 the end of the drag operation and allows the API to
+	##                 carry out the underlying behaviour.
+	## Use           : The allow-drag and release-drag notifiers
+	##                 are called with the following parameters:
+	##                 P_SOURCE: Tree-item (window of agent) that
+	##                    we are currently dragging on.
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_COL_INDEX: Index in the list of columns.
+	##                 P_SELECTION: Display tree selection which is
+	##                    the current set of selected trees, i.e. the ones that are
+	##                    being dragged onto P_TREE.
+	##                 P_EVENT: Event that has been raised.
+	##                 P_DEFAULT_MOUSE: Depending on modmask of P_EVENT:
+	##                    When just Ctrl or Shft are pressed, :copy is the default;
+	##                    For Alt or combinations, this is :link; and
+	##                    With no modifier, this defaults to :move.
+	##                 [P_FIRST_TIME?]: _true if this is the first
+	##                    time the dragging notifier is called for
+	##                    this drag operation. (This allows to setup caches).
+	##                 The allow-drag notifier should return:
+	##                 1) _true if P_TREE is a valid destination,
+	##                    _false otherwise
+	##                 2) Optionally a new P_DEFAULT_MOUSE.
+	## Note          : Dragging is only supported between
+	##                 tree-items on the same frame. No check is
+	##                 done if the area which is dragged on, is really visible.
+	.agent.register_drag_source(p_tree_item.agent, p_release_drag_notifier, p_allow_drag_notifier)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_method tree_item.edit_selection()
+	## Parameters    : -
+	## Returns       : _true if editing has started, 
+	##                 _false if there was nothing to edit.
+	## Function      : Start editing a value in the current
+	##                 selection, if any.
+	##                 If there is more than one :value that can be
+	##                 edited in the first editable display_tree, then
+	##                 repeatedly calling this function will cycle
+	##                 through them.
+	_local l_tm << _self.tree_manager
+	_local l_selection << l_tm.selection
+	_local l_agent << _self.agent
+	# we do not have an event that caused this... if necessary we
+	# can create one
+	_local l_keyb_event << _unset 
+	_for i_sel_dp _over l_selection.fast_elements()
+	_loop
+		_if l_agent.default_handle_edit(i_sel_dp, l_tm.index_of_tree(i_sel_dp), l_keyb_event, l_selection)
+		_then
+			_return _true 
+		_endif
+	_endloop
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.int!col_renderer_at(p_y_remainder)
+	## Parameters    : P_Y_REMAINDER: Remainder as returned from .row_at()
+	## Returns       : Renderer used at P_Y_REMAINDER, which is a either
+	##                 headings renderer or a filter renderer.
+	## Function      : Find out which renderer is used at P_Y_REMAINDER.
+	>> _if (p_y_remainder <= 0) _orif (p_y_remainder > .col_headings_height)
+	   _then >> _unset
+	   _elif (p_y_remainder <= (l_rh << .heading_renderer.row_height))
+	   _then >> (.heading_renderer, p_y_remainder)
+	   _else >> (.filter_renderer,  p_y_remainder - l_rh)
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_private _method tree_item.int!compute_col_headings_height()
+	## Compute width occupied by headings and filtering
+	>> .col_headings_height << (.heading_renderer.row_height +
+				    _if .filtering? _then >> .filter_renderer.row_height _else >> 0 _endif)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.filtering? << p_new
+	## Parameters    : P_NEW: Boolean, turning filtering on or off.
+	## Returns       : P_NEW
+	## Function      : If filtering is turned on, a special region
+	##                 will be shown where filtering values can be entered.
+	##                 If filtering is turned off, the existing
+	##                 filters will be cleared and the region will
+	##                 be hidden again.
+	##                 Screen will be refreshed if necessary.
+	# stop editing if this is currently going on
+	_if (a << _self.agent) _isnt _unset _andif a.editing?
+	_then
+		a.stop_edit(_false)
+	_endif
+	# reflect values on display-tree-manager
+	_if (_not p_new)
+	_then
+		_dynamic !updating_trees?! << _true 
+		_self.tree_manager.clear_all_filters()
+	_endif
+	_self.int!filtering? << p_new
+	_if _self.realised?
+	_then
+		_self.redraw()
+	_endif
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.refresh()
+	## Parameters    : -
+	## Returns       : -
+	## Function      : Ask again for data and try to preserve
+	##                 selection and expansion states.
+	##                 same as sending a .changed(<aspect>,
+	##                 :refresh) to the <data_source>
+	_self.tree_manager.refresh_children()
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.renew()
+	## Parameters    : -
+	## Returns       : -
+	## Function      : Ask again for data and discard current
+	##                 selection and expansion state;
+	##                 same as sending a .changed(<aspect>,
+	##                 :renew) to the <data_source>
+	_self.tree_manager.renew_children()
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_item.clip_bounds
+	## Return a pixel_bounding_box which defines the clip box of
+	## _self.
+	>> _if (b << .clip_bounds) _isnt _unset
+	   _then >> b
+	   _else
+		   # use the slot that reflect whether we currently have a
+		   # scrollbar, rather than whether a scrollbar has been added
+		   w << _if .int!h_scrollbar? # _self.has_horizontal_scrollbar?
+			_then >> _self.h_doc_size
+			_else >> _self.width
+			_endif
+		   h << _if .int!v_scrollbar? # _self.has_vertical_scrollbar?
+			_then >> _self.v_doc_size
+			_else >> _self.height
+			_endif
+		   >> pixel_bounding_box.new_with_size(0,0,w,h)
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={internal})
+_method tree_item.int!clip_bounds
+	## Return a pixel_bounding_box which defines the clip box of
+	## _self; if no clipbounds has been set, this will return unset.
+	>> .clip_bounds
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.int!height_needed_for_rows(p_nr_of_rows)
+	## Parameters    : P_NR_OF_ROWS: Number of rows that will be visible.
+	## Returns       : The height self must have in order to show
+	##                 P_NR_OF_ROWS rows of data.
+	## Function      :
+	>> .row_height * p_nr_of_rows
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.int!ypos_for(p_row_nr)
+	## Parameters    : P_ROW_NR: Index of tree that
+	##                    needs redrawing, and whose top y position
+	##                    we want to know
+	## Returns       : The top y-position of the value-holder on
+	##                 row P_ROW_NR.
+	## Function      :
+	>> .discrete_y_fudge + (p_row_nr - 1) * .row_height
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method tree_item.max_vertical_position
+	## Return the maximum integer value that the vertical_postion
+	## of self's scrollbar can have.
+	## If a value any higher is set, on retrieval, vertical_postion
+	## will return .max_vertical_position.
+	_if _not .int!v_scrollbar? _then _return 0 _endif
+	>> .v_doc_size - _self.height
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_item.check_bounds(p_left, p_top, p_right, p_bottom)
+	## Parameters    : P_LEFT, P_TOP, P_RIGHT, P_BOTTOM: Bounds of
+	##                    cell in which editing should take place.
+	## Returns       : 1) Boolean denoting these bounds are 'visible'
+	##                    or not, visible meaning that enough of
+	##                    the bounds are visible to start editing
+	##                 2) P_LEFT (possibly enlarged)
+	##                 3) P_TOP (possibly enlarged)
+	##                 4) P_RIGHT (possibly reduced)
+	##                 5) P_BOTTOM (possibly reduced)
+	## Function      : Check bounds given by P_LEFT, P_TOP, P_RIGHT, P_BOTTOM
+	##                 to see whether editing in there can start / continue.
+	##                 For this to happen, these bounds need to on
+	##                 the visible area of the canvas.
+	_local l_pos_min << _self.vertical_position
+	_local l_pos_max << (l_pos_min + _self.height)
+	l_pos_min +<< .col_headings_height
+	# check top
+	_if (p_top < l_pos_min)
+	_then
+		# check if visible at all
+		_if ((p_bottom - _self.style_holder.min_cell_visibility_h) < l_pos_min) _then _return _false _endif
+		p_top << l_pos_min
+	_endif
+	# check bottom
+	_if (p_bottom > l_pos_max)
+	_then
+		# check if visible at all
+		_if ((p_top + _self.style_holder.min_cell_visibility_h) > l_pos_max) _then _return _false _endif
+		p_bottom << l_pos_max
+	_endif
+	l_pos_min << _self.horizontal_position
+	l_pos_max << (l_pos_min + _self.width)
+	# check left
+	_if (p_left < l_pos_min)
+	_then
+		# check if visible at all
+		_if ((p_right - _self.style_holder.min_cell_visibility_w) < l_pos_min) _then _return _false _endif
+		p_left << l_pos_min
+	_endif
+	# check right
+	_if (p_right > l_pos_max)
+	_then
+		# check if visible at all
+		_if ((p_left + _self.style_holder.min_cell_visibility_w) > l_pos_max) _then _return _false _endif
+		p_right << l_pos_max
+	_endif
+	>> (_true, p_left, p_top, p_right, p_bottom)
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_item.show_focus? << p_new?
+	## If P_NEW? is _true, then self's selection is drawn depending
+	## on whether self has focus. (Using the style-holders
+	## selected_colour and no_focus_colour).
+	## If P_NEW? is _false (default), then self's selection is
+	## always drawn in the normal select colour.
+	.show_focus? << p_new?
+	_if _not _self.has_focus?
+	_then
+		_self.redraw_selection(_self.selection)
+	_endif
+	>> p_new?
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_item.draw_focus?
+	## Parameters    : -
+	## Returns       : _true if we need to draw in normal selection
+	##                 style, _false if we need to draw in special
+	##                 no-focus style. 
+	## Function      : Check show_focus? property, and if this is
+	##                 _true, return has_focus?  setting.
+	>> (_not .show_focus?) _orif .has_focus?
+	# _orif .agent.editing?, I have tried this as well, but when
+	# this is done is becomes very hard to track when focus moves
+	# away from the in-place-editor.
+	# Last but not least, the fact that focus goes when
+	# in-place-editing starts, help to predict the result of the
+	# Arrow-keys.
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_item.has_focus? << p_new?
+	## Parameters    : P_NEW?, Boolean
+	## Returns       : P_NEW?
+	## Function      : Set self's internal state with regard to
+	##                 having focus. Should be _true if self
+	##                 currently has focus, _false if focus 
+	##                 has moved away to another control
+	.has_focus? << p_new?
+	_if .show_focus?
+	_then
+		_self.process_redraw_selection( _self.selection )
+	_endif
+	>> p_new?
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_item.horizontal_position << new_pos
+	## Set the horizontal scroll position of the window to NEW_POS.
+	## 
+	## This defines the x pixel coordinate within the window which
+	## is visible at the left of the scrollable area.
+	_super.horizontal_position << new_pos
+	# we have scrolled by api (not by end-user); thus we need to
+	# check the position
+	.agent.check_edit_position()
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_item.vertical_position << new_pos
+	## Set the vertical scroll position of the window to NEW_POS.
+	## 
+	## This defines the y pixel coordinate within the window which
+	## is visible at the top of the scrollable area.
+	_super.vertical_position << new_pos
+	# we have scrolled by api (not by end-user); thus we need to
+	# check the position
+	.agent.check_edit_position()
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.int!filtering? << p_new
+	## Parameters    : P_NEW: Boolean, turning filtering on or off.
+	## Returns       : P_NEW
+	## Function      : If filtering is turned on, a special region
+	##                 will be shown where filtering values can be entered.
+	##                 If filtering is turned off, the region will
+	##                 be hidden again.
+	##                 Screen will not be refreshed.
+	_local l_old << .filtering? ^<< p_new
+	_if (l_old _is p_new) _then _return p_new _endif
+	# stop editing if this is currently going on, since now we want
+	# to edit the filter
+	_if (a << _self.agent) _isnt _unset
+	_then
+		_if p_new
+		_then
+			a.stop_edit(_false)
+		_else
+			a.check_always_edit()
+		_endif
+	_endif
+	
+	_if p_new
+	_then
+		_if (.filter_renderer _is _unset)
+		_then
+			.filter_renderer << styled_filter_renderer.new_from(.tree_renderer)
+			.filter_renderer.value_holder << _self.tree_manager
+		_endif
+	_endif
+	# show / hide filtering region
+	_self.int!compute_col_headings_height()
+	_self.update_v_scrolling()
+	_self.changed(:filtering?, p_new)
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.row_height << p_new
+	## Parameters    : P_NEW: Height used when drawing
+	##                    :styled_string of an displayed item on a
+	##                    row.  
+	## Returns       : P_NEW
+	## Function      :
+	>> _self.style_holder.row_height << p_new
+_endmethod
+$
+
+_pragma(classify_level=deprecated, topic={tree_item})
+_method tree_item.column_allow_groupby? ^<< p_new
+	## -------Deprecated------
+	## Reason     : Superceded by column_allow_group_by_values^<<
+	## Use instead: column_allow_group_by_values^<< 
+	## Action     : Restricted at next release.
+	## -----------------------
+	## P_NEW is true (default is false) if the end-user may group the
+	## display trees displayed at the first level by the values
+	## displayed in one of the columns
+	##
+	## The old value for .column_allow_groupby? is returned.
+	##
+	_local l_old << _self.column_allow_groupby?
+	_self.column_allow_groupby? << p_new
+	>> l_old
+_endmethod
+$
+
+_pragma(classify_level=deprecated, topic={tree_item})
+_method tree_item.column_allow_groupby? << p_new
+	## -------Deprecated------
+	## Reason     : Superceded by column_allow_group_by_values<<
+	## Use instead: column_allow_group_by_values<< 
+	## Action     : Restricted at next release.
+	## -----------------------
+	## True (default is false) if the end-user may group the
+	## display trees displayed at the first level by the values
+	## displayed in one of the columns
+	##
+	_if p_new
+	_then
+		.column_allow_group_by_values << simple_vector.new(_self.headings_holder.number_of_columns).fill_with(_true)
+	_else
+		.column_allow_group_by_values << _unset 
+	_endif
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_item.column_allow_groupby?
+	## True (default is false) if the end-user may group the
+	## display trees displayed at the first level by the values
+	## displayed in one of the columns
+	_if ((l_cagbvs << .column_allow_group_by_values) _is _unset)
+	_then
+		_return _false 
+	_endif
+	_for i_cagbv _over l_cagbvs.fast_elements()
+	_loop
+		_if (i_cagbv _is _true)
+		_then
+			_return _true 
+		_endif 
+	_endloop
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item.renderer_notifier<< notifier
+	##
+	## Sets the renderer notifier to NOTIFIER. 
+	##
+	.renderer_notifier<< notifier
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item.done_unrealise()
+	##
+	## _self has been unrealised so tidy up.
+	##
+	_self.agent.stop_edit(_false, _false, _true)
+	_super.done_unrealise()
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.fixup_column_widths()
+	## Parameters    : None
+	## Returns       : Nothing
+	## Function      : Recalculate column widths to fit data
+	##                 Based on tree_item.check_width()
+
+	_local l_headings_holder << _self.headings_holder
+	# Calculate character width (using same algorithm as styled_record_report)
+	_if (l_headings_holder.distribute_spare_width _isnt :always)
+	_then
+		_local char_width << (1.25 * _self.style_holder.col_width).rounded
+		_local num_cols   << l_headings_holder.number_of_columns
+		_local new_widths << rope.new( num_cols )
+		_for i _over 1.upto(num_cols)
+		_loop
+			# This seems to generate the best value for headings with and
+			# without embedded spaces.
+			num_chars << l_headings_holder.column_headings[i].as_charvec().strip_spaces().size
+			new_widths[i] << (num_chars+2) * char_width
+		_endloop
+		_local l_tree_renderer << _self.tree_renderer
+		# fast_visible_trees must be outer loop otherwise we get a new
+		# bucket for each column.
+		_for i_tree, i_index _over _self.tree_manager.fast_visible_trees()
+		_loop
+			l_tree_renderer.value_holder << i_tree
+			_for j _over 1.upto(num_cols)
+			_loop
+				new_widths[j] << new_widths[j].max(l_tree_renderer.optimal_column_width(j))
+			_endloop
+		_endloop
+		l_headings_holder.column_widths << new_widths
+		# Setting the column widths should be (and often is) sufficient
+		# to force a redraw.
+		# However, this does not always happen so we force a redraw by
+		# asking for its width (could call anything that calls
+		# int!check_initialised())
+		# This was reported in bug 93988
+		l_headings_holder.width
+	_endif
+
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_item.create_default_popup_menu(expand_entries?)
+	##
+	## Create a default popup menu. If EXPAND_ENTRIES? is _true
+	## then the 'expand', 'compress' and 'expand all' buttons will
+	## be included.
+	## 
+	_local l_selection << _self.selection
+	_local l_mess_acc << message_handler.new(:gen_graphics)
+	_local l_popup_menu << popup_menu.new(_self, l_mess_acc.human_string(:selection))
+	_if _not l_selection.enforce_single?
+	_then
+		button_item.new(l_popup_menu, l_mess_acc.human_string(:select_all),    l_selection, :select_all|()|,
+				:enabled_state_aspect, :allow_multiple?,
+				:mnemonic, l_mess_acc.human_string(:select_all_m).first,
+				:help_id, :select_all_help)
+	_endif 
+	_if (l_selection.mode _isnt :none)
+	_then
+		button_item.new(l_popup_menu, l_mess_acc.human_string(:select_clear),  l_selection, :select_clear|()|,
+				:enabled_state_aspect, :allow_multiple?,
+				:mnemonic, l_mess_acc.human_string(:select_clear_m).first,
+				:help_id, :select_clear_help)
+	_endif
+	_if expand_entries? _is _true
+	_then
+		separator_item.new(l_popup_menu)
+		button_item.new(l_popup_menu, l_mess_acc.human_string(:expand),
+				l_selection,           {:perform_on_selection|()|, :|expanded?<<|, _true},
+				:mnemonic,             l_mess_acc.human_string(:expand_m).first,
+				:enabled_state_aspect, :anything_selected?,
+				:help_id,              :expand_help)
+		button_item.new(l_popup_menu,          l_mess_acc.human_string(:compress),
+				l_selection,           {:perform_on_selection|()|, :|expanded?<<|, _false},
+				:mnemonic,             l_mess_acc.human_string(:compress_m).first,
+				:enabled_state_aspect, :anything_selected?,
+				:help_id,              :compress_help)
+		button_item.new(l_popup_menu,          l_mess_acc.human_string(:expand_fully),
+				l_selection,           {:perform_on_selection|()|, :expand_fully|()|},
+				:mnemonic, l_mess_acc.human_string(:expand_fully_m).first,
+				:enabled_state_aspect, :anything_selected?,
+				:help_id,              :expand_fully_help)
+	_endif
+	# add filtering to normal menu if there are no headings shown
+	_if .allow_filtering? _andif _not _self.headings_holder.column_headings?
+	_then
+		toggle_item.new(l_popup_menu,     l_mess_acc.human_string(:filter), 
+				:model,           _self,
+				:mnemonic,        l_mess_acc.human_string(:filter_m).first,
+				:change_selector, :|filtering?<<|,
+				:aspect,          :|filtering?|,
+				:value_selector,  :|filtering?|)
+	_endif
+	_if .allow_refresh?
+	_then
+		button_item.new(l_popup_menu, l_mess_acc.human_string(:refresh_list), 
+				_self,        :|renew()|,
+				:mnemonic,    l_mess_acc.human_string(:refresh_list_m).first)
+	_endif
+	>> l_popup_menu	
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={internal})
+_method tree_item.manage_columns()
+	## Activate the column manager dialog 
+	##
+	
+	_if .visibility_manager _is _unset 
+	_then
+		.visibility_manager << tree_item_column_manager.new_dialog( _self.top_frame, _self )
+	
+	_endif
+	
+	.visibility_manager.activate_relative_to( _unset, _self )
+
+	l_headings_holder << _self.headings_holder
+	_local headings << l_headings_holder.column_headings
+	_local visibilities << l_headings_holder.column_visibilities
+
+	.visibility_manager.set_from_visibles( headings, visibilities )
+
+	>> .visibility_manager
+	
+_endmethod
+$
+
+$
+
+$
+
+_pragma(classify_level=advanced, usage={internal})
+_method tree_item.interrupt_sort_or_group()
+	## 
+	## Interrupts the sorting or grouping of a column and redraws
+	## the whole visible area.
+
+	_if _self.interrupt_background_process()
+	_then
+		.items[:interrupt_item].visibility << _false
+		
+		_self.tree_manager.interrupt_stream()
+		# The process was interrupted so redraw display.
+		_self.redraw()
+		_self.cursor << _unset
+
+		# Ensure tree_headings_holder.group_order is correct
+		l_column_index << .items[:last_grouped_by_index]
+		_if l_column_index _is 0
+		_then
+			_self.headings_holder.group_order << _unset
+		_else
+			_self.headings_holder.group_order << l_column_index
+		_endif
+
+		# Ensure the grouped by menu is correct
+		.items[:grouped_by_item].value << l_column_index
+	_endif
+	
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.background_process( _gather p_method_and_args )
+	## 
+	## Wrapper method to process a method and arguments on the tree
+	## item in a background thread.
+	## If a background thread is active, the method call is added
+	## to the queue to be run in the background thread.
+
+	_dynamic !updating_trees?!
+	
+	_if _self.allow_background_process?
+	_then
+		# Make sure we have a queue
+		_if (l_queue << .items[:background_queue]) _is _unset _then l_queue << .items[:background_queue] << queue.new() _endif
+
+		# Lock the queue to make sure things can't be added or removed
+		# simultaneously in another thread 
+		_lock l_queue
+		      l_queue.add({ p_method_and_args, !updating_trees?! })
+		      
+		      _if (t << .items[:background_thread])_is _unset _orif
+			  t.vm_status _is _thisthread.status_terminated
+		      _then
+			      .items[:background_thread] << _proc@background_tree_item( p_tree_item, p_queue )
+								    _dynamic !updating_trees?!
+								    
+								    _loop
+									    _lock p_queue
+										  _if p_queue.empty? _then _leave _endif
+										  (next, !updating_trees?!) << (_scatter p_queue.next())
+									    _endlock
+									    p_tree_item.perform( _scatter next)
+								    _endloop
+								    
+								    p_tree_item.background_process_complete()
+								    
+							    _endproc.fork_at( _thisthread.background_priority, _self, l_queue )
+		      _endif 
+		_endlock 
+	_else
+		_self.perform( _scatter p_method_and_args )
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.set_column_grouped_by?( p_column_index )
+	## 
+	## Checks if we should group on P_COLUMN_INDEX, and carries
+	## out necessary changes.
+
+	_if ( item << .items[:interrupt_item] ) _isnt _unset
+	_then
+		item.visibility << _true
+	_endif
+	
+	_self.headings_holder.column_grouped_by?(p_column_index) << _true
+
+	_if item _isnt _unset
+	_then
+		item.visibility << _false
+	_endif
+
+	.items[:last_grouped_by_index] << p_column_index
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.background_process_complete()
+	## 
+	## Sends notification that the background process is complete.
+
+	.items[:background_thread] << _unset
+	.items[:block_damage?] << _false
+	_self.changed( :background_process_complete )
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.process_redraw( _optional area )
+	##
+	## Parameters    : [AREA]: Area that needs redrawing. If not
+	##                 specified, the whole visible area is redrawn.
+	##
+	## Function      : Draws column headers and redraws AREA.
+	##                 If necessary because of scrolling, the
+	##                 previous column_headers' area will be
+	##                 redrawn, as well as new column headers.
+	##                 If :discrete_scrolling? is enabled, then
+	##                 that is taken into account and AREA may be
+	##                 enlarged. 
+	
+	_dynamic !updating_trees?!
+	
+	# Checking the number of rows may generate a redraw...
+	_if !updating_trees?! _is _true _orif _self.check_number_of_rows()
+	_then
+		_self.manage_items()
+		_return
+	_endif
+
+	!updating_trees?! << _true
+
+	_self.clip_bounds << _unset
+	_self.hotspots << _unset
+
+	xleft << _self.horizontal_position
+	xright << xleft + _self.width
+	ytop << _self.vertical_position
+	ybottom << ytop + _self.height
+
+	old_ytop << .int!column_headings_y
+	
+	# Calculate the bounds to be redrawn
+
+	# Clear the whole area for discrete scrolling when we scroll to
+	# the top or bottom.
+	_if area _is _unset _orif
+	    ( .discrete_scrolling? _andif old_ytop _isnt ytop _andif .discrete_y_fudge _isnt 0 _andif
+	      ( ytop _is 0 _orif ytop >= _self.max_vertical_position ) )
+	_then
+		xmin << xleft
+		ymin << ytop
+		xmax << xright
+		ymax << ybottom
+		
+		_self.clear()
+		clear_all? << _true
+	_else
+		xmin << area.xmin.max( xleft )
+		ymin << area.ymin
+		xmax << area.xmax.min( xright )
+		ymax << area.ymax
+
+		_if ytop < old_ytop
+		_then
+			# Scrolled up - extend the area to repair area occupied by the
+			# old heading
+			ymax << ymax.max( old_ytop + .col_headings_height )
+		_endif
+		
+		clear_all? << _false
+	_endif
+
+	_if ymin _is ytop _andif ymax >= ybottom
+	_then
+		old_discrete_y_fudge << .discrete_y_fudge
+		_self.set_discrete_y_fudge(ytop)
+		_if old_discrete_y_fudge _isnt .discrete_y_fudge
+		_then
+			.agent.check_edit_position()
+		_endif
+	_endif
+
+	# Set ymin to the top of the first damaged row and set ymax
+	# to the bottom of the last damaged row
+	min_index << ((ymin - .discrete_y_fudge) _div .row_height + 1).max( 1 )
+	max_index << ((ymax - .discrete_y_fudge) _div .row_height + 1).max( 1 ) + 1
+	ymin << _self.int!ypos_for( min_index ).max( ytop )
+	ymax << _self.int!ypos_for( max_index ).min( ybottom )
+
+	# Set the index of the first visible tree
+	current_index << ((ytop - .discrete_y_fudge) _div .row_height + 1).max( 1 )
+	.tree_manager.current_index << current_index
+
+	_self.clip_bounds << pixel_bounding_box.new( xmin, ymin, xmax, ymax )
+
+	_if _not clear_all?
+	_then
+		# Clear damaged area
+		_self.clear_area( xmin, ymin, xmax, ymax )
+	_endif
+
+	# Redraw all appropriate rows
+	_if .tree_manager.children?
+	_then
+		_self.int!redraw( xmin, ymin, xmax, ymax, current_index )
+	_else
+		_self.int!redraw_no_data()
+	_endif
+
+	_self.clip_bounds << _unset
+	
+	# Redraw heading row
+	_if old_ytop _isnt ytop _orif
+	    ymin <= ytop + .col_headings_height
+	_then
+		_self.clear_area( xleft, ytop, xright, ytop + .col_headings_height )
+		.heading_renderer.render( xleft, ytop, xright, ytop + .col_headings_height, 0 )
+
+		_if .filtering?
+		_then
+			.filter_renderer.render( xleft, ytop + .heading_renderer.row_height, xright, ytop + .col_headings_height, 0 )
+		_endif
+	_endif
+
+	.int!column_headings_y << ytop
+
+	# No pending changes regarding selection need to be drawn anymore
+	_self.selection.reset_notify_selection()
+	
+	_if .agent.editing?
+	_then
+		edit_area << .agent.edit_manager.edit_area
+		xedit << edit_area.xmin
+		yedit << edit_area.ymin
+		_self.clear_area( xedit, yedit, edit_area.xmax, edit_area.ymax )
+		_self.renderer.render_panel( xedit, yedit, edit_area.width, edit_area.height, 0, _true )
+		
+		# Make sure that if we are a container, the children are refreshed.
+		# It would be nice to just have to redraw the damaged area but
+		# because we can't rely on this redraw method not to draw over
+		# our children outside the damage area we must force all the
+		# children to redraw.
+		_self.force_children_redraw()
+	_endif
+
+	_self.manage_items()
+
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.int!redraw_selection(p_trees)
+	## Parameters    : P_TREES: Set of trees that are change, thus,
+	##                    they either became de-selected, *or* they became 
+	##                    selected. Trees that continued to have
+	##                    the same selection state may not be passed.
+	## Returns       : 
+	## Function      : Redraws trees that are visible and included
+	##                 in P_TREES
+
+	_if _not _self.realised? _then _return _endif
+	_local l_y << _self.vertical_position, l_ymax << l_y + _self.height
+	_local l_ymin << l_y +<< .col_headings_height
+	_local l_xmin << _self.horizontal_position, l_xmax << l_xmin + _self.width
+	_local l_discrete_fudge << .discrete_y_fudge
+	_local l_renderer_notifier << .renderer_notifier
+	_local l_tree_renderer << _self.tree_renderer
+	_local l_no_refresh_left_offset? << (_self.style_holder.display_style _isnt :tabular)
+	_local l_x << l_xmin
+	_local l_spw << _self.style_holder.selection_spacing_w
+
+	_local l_selection << _self.selection
+	_local l_draw_focus_border? << .show_focus? _andif .has_focus? _andif l_selection.empty?
+	_local l_focus_tree << l_selection.focus_tree
+
+	_for i_tree, i_index _over .tree_manager.fast_visible_trees(.tree_manager.current_index)
+	_loop
+		_if ( l_focus_tree? << i_tree _is l_focus_tree )
+		_then
+			l_focus_index << i_index
+		_endif
+		
+		_if ((l_y << _self.int!ypos_for(i_index)) >= l_ymax) _then _leave _endif
+		
+		_if p_trees.includes?(i_tree) _orif
+		    ( _not l_draw_focus_border? _andif l_focus_tree? )
+		_then
+			# allow user to set a different renderer
+			_if (l_renderer_notifier _isnt _unset)
+			_then
+				l_tree_renderer << l_renderer_notifier(i_tree, _self)
+			_endif
+			_local l_yend << l_y + _self.row_height(i_index)
+			l_tree_renderer.value_holder << i_tree
+			_self.clip_bounds << pixel_bounding_box.new(l_xmin, l_y.max(l_ymin), l_xmax, l_yend)
+			_if l_no_refresh_left_offset?
+			_then
+				# we do not want 
+				l_x << l_tree_renderer.left_offset() - l_spw
+			_endif
+			_self.clear_area(l_x, l_y, l_xmax, l_yend)
+			l_tree_renderer.render(l_x, l_y, l_xmax, l_yend, i_index)
+		_endif
+	_endloop
+
+	_if l_draw_focus_border? _andif
+	    l_focus_index _isnt _unset _andif
+	    ( l_y << _self.int!ypos_for(l_focus_index) ) < l_ymax
+	_then
+		l_tree_renderer << _self.tree_renderer
+		l_tree_renderer.value_holder << l_focus_tree
+		l_tree_renderer.render_focus_border(l_y, l_selection.focus_column)
+	_endif
+	
+	# this saves us one damaged event when we scroll (!)
+	_self.clip_bounds << _unset 
+	_if .agent.editing?
+	_then
+		_local l_area << .agent.edit_manager.edit_area
+		_self.clear_area(l_xpos << l_area.xmin, l_ypos << l_area.ymin, l_area.xmax, l_area.ymax)
+		_self.renderer.render_panel(l_xpos, l_ypos, l_area.width, l_area.height, 0, _true)
+		# make sure that if we are a container, the children are refreshed
+		# It would be nice to just have to redraw the damaged area but
+		# because we can't rely on this redraw method not to draw over
+		# our children outside the damage area we must force all the
+		# children to redraw.
+		_self.force_children_redraw() # p_area)
+	_endif
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.process_redraw_selection( p_trees )
+	## 
+	## Redraws trees that are visible and included P_TREES.
+
+	_if _self.allow_background_process?
+	_then
+		# Prevent redraws from damage events
+		block_damage? << .items[:block_damage?] ^<< _true
+	_endif
+
+	_self.int!redraw_selection( p_trees )
+
+	_if _self.allow_background_process?
+	_then
+		.items[:block_damage?] << block_damage?
+	_endif
+
+	_if _not (l_selection << _self.selection).empty?
+	_then
+		# store the first selected tree
+		l_selection.focus_tree << l_selection.start_tree
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.background_process_busy?
+	## 
+	## Returns whether the background thread is active.
+
+	>> .items[:background_thread] _isnt _unset
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.interrupt_background_process()
+	## 
+	## Interrupts the background thread.
+	## Returns whether a thread was interrupted.
+
+	>> _if _self.background_process_busy?
+	   _then
+		   .items[:background_thread].kill_and_wait()
+		   _self.background_process_complete()
+		   >> _true 
+	   _else
+		   >> _false 
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={internal})
+_method tree_item.sort_column( col_index )
+	## 
+	## Sort the column with index COL_INDEX.
+	#
+	# When we start a new selection, the headings_popup_menu will
+	# have been discarded, and we need to have one so we can set
+	# the interrupt visibility, so ensure it exists.
+	# [.headings_popup_menu is lightweight if it already exists].
+	#
+	_self.headings_popup_menu
+	
+	_if ( item << .items[:interrupt_item] ) _isnt _unset
+	_then
+		item.visibility << _true
+	_endif
+
+	col_index << .agent.headings_holder.toggle_sort_order?( col_index )
+	.agent.sort_column( col_index )
+
+	_if item _isnt _unset
+	_then
+		item.visibility << _false
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.column_grouped_by?( p_column_index )
+	## 
+	## Returns true if the display trees have been grouped on
+	## P_COLUMN_INDEX.
+
+	>> _self.headings_holder.column_grouped_by?( p_column_index )
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.get_all_records()
+	## 
+	## Ensure all data is evaluated.
+	## Performed in a background thread if appropriate.
+
+	_self.background_process( :|int!get_all_records()| )
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_item.int!get_all_records()
+	## 
+	## Ensure all data is evaluated.
+
+	_if _self.allow_background_process?
+	_then
+		# Prevent redraws from damage events
+		block_damage? << .items[:block_damage?] ^<< _true
+	_endif
+	
+	_self.tree_manager.ensure_all_children()
+	
+	_if _self.allow_background_process?
+	_then
+		.items[:block_damage?] << block_damage?
+	_endif
+	
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_item.manage_items()
+	## 
+	## Update the visibility and values of any gui widgets.
+
+	_if ( l_grouped_by_item << .items[:grouped_by_item] ) _isnt _unset
+	_then
+		_for i_column_index _over _self.headings_holder.fast_indices( _true )
+		_loop
+			_if _self.column_grouped_by?( i_column_index )
+			_then
+				l_grouped_by_item.value << i_column_index
+				.items[:last_grouped_by_index] << i_column_index
+				_leave
+			_endif
+		_endloop
+	_endif
+		
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_iter _method tree_item.depth_first_elements( _optional start_index, end_index )
+	##
+	## Yeilds all elements from a depth-first traverse of the tree.
+	##
+	## If optionally START_INDEX and END_INDEX are specified,
+	## they will limit the number of first level trees being sought.
+	##
+	## The depth recursion can be terminated by returning _false from the
+	## loop body.
+	##
+	##	_for  e _over  a_tree_item.depth_first_elements()
+	##	_loop
+	##		# do something with e
+	##		>> _if deep_enough?
+	##		_then
+	##			>> _false
+	##		_endif
+	##	_endloop 
+	##	
+	
+	_for a_child, child_index _over .tree_manager.fast_children( start_index )
+	_loop
+		_if ( end_index _isnt _unset ) _andif ( child_index > end_index )
+		_then
+			_leave
+		_endif
+		_for a_tree _over a_child.fast_depth_first()
+		_loop
+			>> _loopbody ( a_tree )
+		_endloop
+	_endloop
+_endmethod
+$
+
+$
+
+$
+
+_pragma(classify_level=restricted)
+_private _method tree_item.set_discrete_y_fudge(ytop)
+
+	## Set the offset from the top that rows will be drawn at, this
+	## is to take into account the space that the heading takes up.
+	
+	.discrete_y_fudge << _if .discrete_scrolling?
+			     _then
+				     (current_index, discrete_fudge) << _self.int!row_index_at( ytop )
+				     >> discrete_fudge + .col_headings_height
+			     _else
+				     >> .col_headings_height
+			     _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item.popup_menu_for_key
+	 ##
+        ## Get the menu to be displayed when user presses the menu key
+        ##
+	 >> _self.popup_menu
+_endmethod
+$
+

@@ -1,0 +1,215 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+## Container for formatted, styled elements. This can layout
+## text and insert images in a simple way. The following
+## specifies how the display elements will be treated:
+## 
+## Every object not a symbol will converted to strings with .write_on()
+## _unset : will ignored
+## Symbols will be treates as keywords or as parse_functions.
+## 
+## The following keywords can be used:
+## :tab : in tabular mode, tab to the next column; in document
+##    mode, indent 
+## :tab_left, :tab_right, :tab_centre : in tabular mode, tab to
+##    the next column and override the column alignment
+## :newline : in document mode, moves to the next line
+## :colon : add a ': ' if another element follows (specified in
+##    !current_locale![:styled_string_colon]) 
+## :sep : add a ', ' if another element follows (specified in
+##    !current_locale![:styled_string_sep])
+## :space : word add a space if another element follows
+## :no_space : no space is added before the next element text
+## :<style_name> : use the given text style; if the name is not
+##    a known text style but identifies a colour (such as
+##    :foreground, :black or :red) then create a text style to
+##    use the given colour. Symbols are always treated as
+##    style_names, if they arenot a keyword/function
+##
+## The following functions can be used (Each function takes
+## exactly 1 argument):
+## :image : next element gives an image scheme name, an image
+##    name or an image locator (that is, an image name and
+##    resource module name); a named image is accessed as a module
+##    or product resource, or as defined window system data
+## :value : next element identifies the value to display, for
+##    example by index number or property list key; if this is
+##    unset then the value is accessed directly with display_tree.value
+## :toggle : provides a box for the user to toggle a
+##    value; next element gives the index of the value or unset if
+##    the value is accessed directly with no index
+## :radio_toggle : the values of a display tree can be
+##    displayed as a set of radio toggles; when the radio toggle
+##    for one value is checked then the other values are set to
+##    false
+## :method : the next element is a vector {receiver, message,
+##    gather arguments}; sending message to receiver resturns a
+##    new styled string to be added at this position
+## :custom_draw : the next element is a custom draw renderer
+## :merge: denotes a cell merge, if followed by _unset all
+##    cells are merged, otherwise the number supplied denotes the
+##    amount of cells we want to merge 
+## :align : either takes just h_alignment which is :left/:centre/:right or 
+##    v_alignment being {:top/:centre/:bottom, [<h_alignment>]} 
+##    where h_alignment is also allowed to be unset
+## :move : either just takes horizontal displacement (added to
+##    the x-value, e.g. 5) or {<v_displacement>, [<h_displacement>]}
+##    added x- and y-value respectively.
+def_slotted_exemplar(:styled_string,
+{
+	{:int!styled_string, _unset}
+},
+{:styled_string_mixin})
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+## Internal stored for processed styled_string.
+styled_string.define_slot_access(:int!styled_string, :writable, :public)
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method styled_string.new(_gather p_styled_string)
+	## Returns       : A new initialised styled string.
+	## Parameters    : {P_STYLED_STRING}: Styled string elements,
+	##                 are treated as follows:
+	##
+	## Every object not a symbol will converted to strings with .write_on()
+	## _unset : will ignored
+	## Symbols will be treates as keywords or as parse_functions.
+	## 
+	## The following keywords can be used:
+	## :tab : in tabular mode, tab to the next column; in document
+	##    mode, indent 
+	## :tab_left, :tab_right, :tab_centre : in tabular mode, tab to
+	##    the next column and override the column alignment
+	## :newline : in document mode, moves to the next line
+	## :colon : add a ': ' if another element follows (specified in
+	##    !current_locale![:styled_string_colon]) 
+	## :sep : add a ', ' if another element follows (specified in
+	##    !current_locale![:styled_string_sep])
+	## :space : word add a space if another element follows
+	## :no_space : no space is added before the next element text
+	## :<style_name> : use the given text style; if the name is not
+	##    a known text style but identifies a colour (such as
+	##    :foreground, :black or :red) then create a text style to
+	##    use the given colour. Symbols are always treated as
+	##    style_names, if they arenot a keyword/function
+	##
+	## The following functions can be used (Each function takes
+	## exactly 1 argument):
+	## :image : next element gives an image scheme name, an image
+	##    name or an image locator (that is, an image name and
+	##    resource module name); a named image is accessed as a module
+	##    or product resource, or as defined window system data
+	## :value : next element identifies the value to display, for
+	##    example by index number or property list key; if this is
+	##    unset then the value is accessed directly with display_tree.value
+	## :toggle : provides a box for the user to toggle a
+	##    value; next element gives the index of the value or unset if
+	##    the value is accessed directly with no index
+	## :radio_toggle : the values of a display tree can be
+	##    displayed as a set of radio toggles; when the radio toggle
+	##    for one value is checked then the other values are set to
+	##    false
+	## :method : the next element is a vector {receiver, message,
+	##    gather arguments}; sending message to receiver resturns a
+	##    new styled string to be added at this position
+	## :custom_draw : the next element is a custom draw renderer
+	## :merge: denotes a cell merge, if followed by _unset all
+	##    cells are merged, otherwise the number supplied denotes the
+	##    amount of cells we want to merge 
+	## :align : either takes just h_alignment which is :left/:centre/:right or 
+	##    v_alignment being {:top/:centre/:bottom, [<h_alignment>]} 
+	##    where h_alignment is also allowed to be unset
+	## :move : either just takes horizontal displacement (added to
+	##    the x-value, e.g. 5) or {<v_displacement>, [<h_displacement>]}
+	##    added x- and y-value respectively.
+	_local l_new << _clone.init()
+	l_new.styled_string << p_styled_string
+	>> l_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method styled_string.new_from(p_styled_string)
+	## Parameters    : P_STYLED_STRING: A String, a styled_string
+	##                 or a collection of styled string elements.
+	##                 For possible elements see the .new() method.
+	## Returns       : A new initialised styled string.
+	## Function      :
+
+	_local l_new << _clone.init()
+	_if p_styled_string _is _unset _orif
+	    p_styled_string.is_string?
+	_then
+		l_new.styled_string << { p_styled_string }
+	_else 
+		l_new.styled_string << p_styled_string
+	_endif 
+	>> l_new
+
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method styled_string.new_from_method(p_receiver, p_method, _gather p_args)
+	## Parameters    : P_RECEIVER: Object that understands P_METHOD
+	##                 P_METHOD: Will be send to P_RECEIVER with
+	##                    P_ARGS and needs to return a collection of styled string
+	##                    elements, or styled_string itself.
+	##                 {P_ARGS}
+	## Returns       : An initialised, lazy styled_string instance
+	##                 that will use P_RECEIVER and P_METHOD to
+	##                 obtain its contents.
+	## Function      : 
+	_local l_styled_string << handler.new(p_receiver, p_method, _scatter p_args)
+	>> _clone.init(l_styled_string)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_private _method styled_string.init(_optional p_styled_string)
+	## Parameters    : P_STYLED_STRING: Parsed and validated
+	##                    collection of styled string elements, or
+	##                    styled_string itself 
+	## Returns       : _self
+	## Function      : Initialise _self
+	# make sure we reset this, since it might have been set for the exemplar
+	.int!styled_string << p_styled_string 
+	>> _self 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method styled_string.show_on(p_stream)
+	## Parameters    : P_STREAM: Stream on which we want to show _self
+	## Returns       : 
+	## Function      : Display _self on P_STREAM, using only safe methods
+	p_stream.write(_self.class_name, " (", %", _self.as_charvec(), %", %))
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method styled_string.as_styled_string()
+	## Parameters    : -
+	## Returns       : _self
+	## Function      : Self is requested as a styled string. It
+	##                 is most straightforward to return _self.
+	>> _self 
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method styled_string.is_string?
+	## Returns true if _self is a string
+	>> _false
+_endmethod
+$
+

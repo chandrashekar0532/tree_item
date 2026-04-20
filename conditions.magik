@@ -1,0 +1,46 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+condition.define_condition( :filter_value_no_dest,
+			    :user_error,
+			    {:source},
+			    "No suitable destination has found to convert '#1' to")
+$
+
+condition.define_condition( :filter_value_no_conversion,
+			    :user_error,
+			    {:source, :destination},
+			    "Unknown how to convert '#1' to type '#2'.")
+$
+
+condition.define_condition( :filter_value_only_operator,
+			    :user_error,
+			    {:operator},
+			    "Only an operator '#1', has been supplied, but no value to compare to.")
+$
+
+_pragma(classify_level=restricted)
+## This condition is an user-error condition for internal use
+## only, to stop changing a selection before it actually changed
+condition.define_condition( :cancel_selection_change,
+			    :user_error,
+			    {},
+			    "Please cancel changing the selection, we want to retain it.")
+$
+
+condition.define_condition( :invalid_edit_action_agent,
+			    :error,
+			    {:bad_agent,:proxy},
+			    "Invalid agent #1 being set on #2. Expected an instance of sw_edit_action")
+$
+
+condition.define_condition( :too_many_items_to_group,
+			    :user_error,
+			    {:max},
+			    "You cannot group more than #1 items" )
+$

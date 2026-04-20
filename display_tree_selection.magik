@@ -1,0 +1,1888 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=basic, topic={tree_item})
+## Is responsible for which display trees are selected, and how.
+## It's element are always display trees, regardless of which
+## mode it is in, and these display trees can be retrieved with
+## methods such as the iter method .fast_elements()
+##
+## Note that it has set like behaviour, and thus its elements
+## are not yielded in a specific order.
+## (To get them in the order they are displayed, use
+## .tree_manager.fast_selected_trees() )
+##
+## Three select modes are supported: :none, :one and :many (default),
+## that allow respectively 0, 0-1 and 0-n display trees to be selected.
+## Note that there is not a mode for 'exacly one' since there
+## will be always situations where it is not possible to have
+## one selected (e.g. when there are no elements at all!)
+##
+## One important property is .cell_selection?, that when _true
+## (_false by default), allows the user to select cells rather
+## than rows. Still, the elements contained in the
+## display_tree_selection will be .display_trees, of which *at
+## least* one cell has been selected.
+## (To retrieve which cells, use e.g. iter .an_element().selected_columns().)
+##
+## Two notifiers are available:
+##  * select_notifier: called after the election changed, and
+##    after it has been drawn, to allow the api-user take
+##    appropriate actions for the new selection
+##  * pre_select_notifier: called after then selection changed,
+##    but before it is drawn, thus giving the api-user an
+##    execellent opportunity to .remove invalid selections.
+##    (After this, the verified selection will be drawn and
+##    notified with the .select_notifier.)
+## Both notifiers will pass display_tree_selection as the first
+## argument, and a boolean denoting if the change has been made
+## by the end-user. So _true means the end user has caused an
+## event that set, toggled or extended the selection, and
+## _false means that some code added or removed things from the
+## selection. If both kind of changes happen, than _true
+## (i.e. end-user made a change) will prevail.
+## 
+## The notifiers have to be of the class handler, or
+## alternatively, when :model is passed as a property at the same time,
+## can be a symbol or simple_vector that will be send to this model.
+##
+## At last the following change notifications are given:
+##  * anything_selected?: send when the selection changed,
+##    followed by a boolean that is true when there is anything
+##    selected.
+##  * selection: (for internal use only, restricted!) send when the
+##    selection changed, followed by either :row or :cell, and
+##    followed by a set of changed trees (or a hashtable of
+##    display_trees with their old cell selection).
+##  * allow_multiple?: when the mode is changed, followed by a
+##    boolean denoting if we allow more than 1 display tree to be selected.
+def_slotted_exemplar(:display_tree_selection,
+{
+	{ :tree_manager,          _unset },
+	{ :selection_cache,       _unset },
+	{ :start_tree,            _unset },
+	{ :start_row,             _unset },
+	{ :start_col,             _unset },
+	{ :end_tree,              _unset },
+	{ :end_row,               _unset },
+	{ :end_col,               _unset },
+	{ :visible_column_order,  _unset },
+	{ :mode,                   :many }, # either: :none, :one or :many (default)
+	{ :cell_selection?,       _false },
+	{ :pre_select_notifier,  handler },
+	{ :select_notifier,      handler },
+	{ :int!handling_change?,  _false },
+	{ :int!handling_user?,    _false }, # i.e. not programmatic
+	{ :int!handling_data,     _unset },
+	{ :focus_tree,            _unset },
+	{ :focus_column,          _unset }
+},
+{ :basic_collection_mixin }
+)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Provides access to the hidden top-tree that manages and
+## communicates changes
+display_tree_selection.define_slot_access(:tree_manager, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Three select modes are supported: :none, :one and :many (default), 
+## that allow respectively 0, 0-1 and 0-n display trees to be selected.
+## Note that there is not a mode for 'exacly one' since there
+## will be always situations where it is not possible to have
+## one selected (e.g. when there are no elements at all!)
+##
+## In case .cell_selection? is true, _self will contain those
+## display_trees for which at least one cell is selected.
+display_tree_selection.define_slot_access(:mode, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## When cell_selection is set to _true (it is _false by
+## default), the user is allowed to select cells rather 
+## than rows. Still, the elements contained in the
+## display_tree_selection will be .display_trees, of which *at
+## least* one cell has been selected.
+## (To retrieve which cells, send the iter method
+## .selected_columns() to an selected display tree.)
+display_tree_selection.define_slot_access(:cell_selection?, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## The pre_select_notifier is called after then selection changed,
+## but before it is drawn, thus giving the api-user an
+## execellent opportunity to .remove invalid selections.
+## (After this, the verified selection will be drawn and
+## notified with the .select_notifier.)
+##
+## The notifier will pass display_tree_selection as the first
+## argument, and a boolean denoting if the change has been made
+## by the end-user. So _true means the end user has caused an
+## event that set, toggled or extended the selection, and
+## _false means that some code added or removed things from the
+## selection. If both kind of changes happen, than _true
+## (i.e. end-user made a change) will prevail.
+## 
+## The notifier has to be of the class handler, or
+## alternatively, when :model is passed as a property at the same time,
+## can be a symbol or simple_vector that will be send to this model.
+display_tree_selection.define_slot_access(:pre_select_notifier, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## The select_notifier is called after the selection changed, and
+## after it has been drawn, to allow the api-user take
+## appropriate actions for the new selection
+##
+## The notifier will pass display_tree_selection as the first
+## argument, and a boolean denoting if the change has been made
+## by the end-user. So _true means the end user has caused an
+## event that set, toggled or extended the selection, and
+## _false means that some code added or removed things from the
+## selection. If both kind of changes happen, than _true
+## (i.e. end-user made a change) will prevail.
+## 
+## The notifier has to be of the class handler, or
+## alternatively, when :model is passed as a property at the same time,
+## can be a symbol or simple_vector that will be send to this model.
+display_tree_selection.define_slot_access(:select_notifier, :readable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+##
+display_tree_selection.define_shared_constant(:exported_properties,
+	set.new_with(:mode, :cell_selection?, :pre_select_notifier, :select_notifier),
+	:public)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.new(p_properties)
+	## Parameters    : P_PROPERTIES: Property_list or hash_table
+	##                    containing settings.
+	##                    Properties that are allowed are:
+	##                     * :tree_manager: has to be passed.
+	##                     * :mode: defaults to :many
+	##                     * :cell_selection?: defaults to _false
+	##                     * :pre_select_notifier
+	##                     * :select_notifier
+	## Returns       : A new instance.
+	## Function      : Create a new instance, with P_PROPERTIES set.
+	##                 See also class comments and comments for
+	##                 more information on these properties.
+	>> _clone.init(p_properties)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method display_tree_selection.init(p_properties)
+	## Parameters    : P_PROPERTIES (see .new())
+	## Returns       : 
+	## Function      : Set properties to P_PROPERTIES (see .new())
+	.selection_cache << set.new()
+	# manager
+	.tree_manager << p_properties[:tree_manager]
+	# mode
+	_self.mode << p_properties[:mode].default(:many)
+	# single?
+	_self.cell_selection? << p_properties[:cell_selection?].default(_false)
+	# select notifier
+	_if ((l_notifier << p_properties[:select_notifier]) _isnt _unset) _orif
+	    ((l_notifier << p_properties[:select_selector]) _isnt _unset) # ToDo: Talk to Roger
+	_then
+		.select_notifier << handler.check_type(l_notifier, p_properties[:model])
+	_endif
+	_if ((l_notifier << p_properties[:pre_select_notifier]) _isnt _unset) 
+	_then
+		.pre_select_notifier << handler.check_type(l_notifier, p_properties[:model])
+	_endif
+	>> _self 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.show_on(p_stream)
+	## Parameters    : P_STREAM: Stream to write self's most characteristic data to.
+	## Returns       : -
+	## Function      : Write class_name, mode, cell_selection and
+	##                 the number of display_trees that are selected on P_STREAM.
+	p_stream.write(_self.class_name, "(mode=", .mode, ";cell_selection?=", _self.cell_selection?, ")[1-", _self.size, %])
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.mode << p_new
+	## Parameters    : P_NEW: Gives the new mode.
+	##
+	## Three select modes are supported: :none, :one and :many, 
+	## that allow respectively 0, 0-1 and 0-n display trees to be selected.
+	## Note that there is not a mode for 'exacly one' since there
+	## will be always situations where it is not possible to have
+	## one selected (e.g. when there are no elements at all!)
+	##
+	## In case .cell_selection? is true, _self will contain those
+	## display_trees for which at least one cell is selected.
+	##
+	## A .change notification for :allow_multiple? with boolean (p_new _is :many)
+	## Condition :error is raised when an invalid mode is passed.
+	_if (p_new _is :none)
+	_then
+		_self.empty()
+	_elif (p_new _is :one)
+	_then
+		_if (.mode _is :many) _andif (_self.size > 1)
+		_then
+			_local l_last_tree << _self.end_tree, l_sel << l_last_tree.selection
+			# reduce selection
+			_self.hold_notify_selection()
+			_self.empty()
+			_self.add(l_last_tree, l_sel)
+			_self.release_notify_selection()
+			# convert to rows
+			_for i_tree _over _self.fast_elements()
+			_loop
+				i_tree.selection << _true 
+			_endloop
+			_self.changed(:selection)
+		_endif
+	_elif (p_new _is :many)
+	_then
+		# all is acceptable
+	_else 
+		# do not accept anything wlse
+		condition.raise(:error, :string, write_string("Invalid mode passed: ", p_new))
+	_endif
+	.mode << p_new
+	_self.changed(:allow_multiple?, p_new _is :many)
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.cell_selection? << p_new?
+	## Parameters    : P_NEW: Gives the new cell_selection.
+	##
+	## When cell_selection is set to _true (it is _false by
+	## default), the user is allowed to select cells rather 
+	## than rows. Still, the elements contained in the
+	## display_tree_selection will be .display_trees, of which *at
+	## least* one cell has been selected.
+	## (To retrieve which cells, send the iter method
+	## .selected_columns() to an selected display tree.)
+	_if (.cell_selection? << _true.check_type(p_new?))
+	_then
+		# all is acceptable
+	_else
+		# convert to rows
+		_for i_tree _over _self.fast_elements()
+		_loop
+			i_tree.selection << _true 
+		_endloop
+		_self.changed(:selection)
+	_endif
+	>> p_new?
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.enforce_single?
+	## Parameters    : -
+	## Returns       : Boolean
+	## Function      : Returns if the selection has to restrict
+	##                 itself to a single element (i.e. display tree)
+	>> (.mode _isnt :many)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.select_notifier << p_new
+	## Parameters    : P_NEW: Gives the new select_notifier.
+	##
+	## The select_notifier is called after the selection changed, and
+	## after it has been drawn, to allow the api-user take
+	## appropriate actions for the new selection
+	##
+	## The notifier will pass display_tree_selection as the first
+	## argument, and a boolean denoting if the change has been made
+	## by the end-user. So _true means the end user has caused an
+	## event that set, toggled or extended the selection, and
+	## _false means that some code added or removed things from the
+	## selection. If both kind of changes happen, than _true
+	## (i.e. end-user made a change) will prevail.
+	## 
+	## The notifier has to be of the class handler, or
+	## alternatively, when :model is passed as a property at the same time,
+	## can be a symbol or simple_vector that will be send to this model.
+	.select_notifier << _if p_new _isnt _unset _then >> handler.check_type(p_new) _endif
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.pre_select_notifier << p_new
+	## Parameters    : P_NEW: Gives the new pre_select_notifier.
+	##
+	## The pre_select_notifier is called after then selection changed,
+	## but before it is drawn, thus giving the api-user an
+	## execellent opportunity to .remove invalid selections.
+	## (After this, the verified selection will be drawn and
+	## notified with the .select_notifier.)
+	##
+	## The notifier will pass display_tree_selection as the first
+	## argument, and a boolean denoting if the change has been made
+	## by the end-user. So _true means the end user has caused an
+	## event that set, toggled or extended the selection, and
+	## _false means that some code added or removed things from the
+	## selection. If both kind of changes happen, than _true
+	## (i.e. end-user made a change) will prevail.
+	## 
+	## The notifier has to be of the class handler, or
+	## alternatively, when :model is passed as a property at the same time,
+	## can be a symbol or simple_vector that will be send to this model.
+	.pre_select_notifier << _if p_new _isnt _unset _then >> handler.check_type(p_new) _endif 
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_selection.hold_notify_selection(_optional p_user?, p_changed_trees)
+	## Parameters    : [P_USER?]: If _true, changes that will come
+	##                    as part of the selection change that is hold up, are marked
+	##                    as being made by the end-user.
+	##                 [P_CHANGED_TREES]: Set of trees whose
+	##                    selection has changed
+	## Returns       : True if - before this call - we were already
+	##                 engaged in gathering changes to the selection; False if we
+	##                 only just started to gather changes after this call.
+	## Function      : Start collecting changes to the selection
+	## Use           : In combination with .notify_selection() to have nested changes:
+	## 	           _local l_old_handling_change? << _self.hold_notify_selection(_false, <some_changed_trees>)
+	##                 <some code>
+	##                 _self.notify_selectionn(_false, <more_changed_trees>, l_old_handling_change?)
+	_local l_old? << .int!handling_change? ^<< _true
+	# notify we start changing the selection (only the first time!)
+	# this is on the only place where a :cancel_selection_change
+	# condition might be thrown, and should be handled if P_USER?
+	# is true. Effectively, this will cancel the change to the selection.
+	_if _not l_old?
+	_then
+		_self.changed(:pre_selection, p_user?)
+	_endif
+	_self.int!hold_notify_selection(p_user?, p_changed_trees)
+	>> l_old?
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_selection.notify_selection(_optional p_user?, p_changed_trees, p_old_handling_change_state?)
+	## Parameters    : [P_USER?]: If _true, changes that will come
+	##                    as part of the selection change that is hold up, are marked
+	##                    as being made by the end-user.
+	##                 [P_CHANGED_TREES]: Set of trees whose
+	##                    selection has changed
+	##                 [P_OLD_HANDLING_CHANGE_STATE?]: The result
+	##                    of .hold_notify_selection(), that should have been called at
+	##                    the beginning of a nested change.
+	## Returns       : -
+	## Function      : Stop collecting some nested changes, do a
+	##                 notify if this is the most outer block of changes.
+	##                 (And *do not* do a notify when some encapsulating
+	##                 process will do it later on)
+	## Use           : Together with .notify_selection() for a nested block of changes; OR
+	##                 on its own, to add some change data to the
+	##                 current set (and notify as well, if not part of a greater change)
+	_local l_do_not_accumulate? << _not .int!handling_change?
+	_self.int!hold_notify_selection(p_user?, p_changed_trees)
+	# check if we are part of a bigger change
+	_if l_do_not_accumulate? _orif (p_old_handling_change_state? _is _false)
+	_then
+		# no we are not, so notify now
+		_self.int!release_notify_selection()
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_selection.release_notify_selection(_optional p_user?, p_changed_trees)
+	## Parameters    : [P_USER?]: If _true, changes that will come
+	##                    as part of the selection change that is hold up, are marked
+	##                    as being made by the end-user.
+	##                 [P_CHANGED_TREES]: Set of trees whose
+	##                    selection has changed
+	## Returns       : True if the selection changed, 
+	##                 false if it did not.
+	## Function      : As .notify_selection(), but always directly
+	##                 notify, even if we are a part of a greater change.
+	_self.int!hold_notify_selection(p_user?, p_changed_trees)
+	>> _self.int!release_notify_selection()
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_selection.cancel_notify_selection()
+	## Parameters    : -
+	## Returns       : 1) _false (nothing changed)
+	##                 2) _true (change to selection got cancelled)
+	## Function      : No notification to the api will be given;
+	##                 this is dangerous to call since the notifier
+	##                 will not get called for changes that have happened.
+	## Use           : Only in postume calls!
+	.int!handling_change? << .int!handling_user? << _false
+	_self.reset_notify_selection()
+	>> (_false, _true)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_selection.reset_notify_selection()
+	## Parameters    : -
+	## Returns       : -
+	## Function      : Reset the changes we have to draw, but do
+	##                 not cancel the notify selection;
+	##                 This is useful when the screen is redrawn,
+	##                 so all xor-selection change data can go now.
+	##                 However, if a selection notification is
+	##                 going on, that still has to take place since other control
+	##                 might need updating.
+	.int!handling_data << _unset 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method display_tree_selection.int!hold_notify_selection(p_user?, p_changed_trees)
+	## Parameters    : [P_USER?]: If _true, changes that will come
+	##                    as part of the selection change that is hold up, are marked
+	##                    as being made by the end-user.
+	##                 [P_CHANGED_TREES]: Set of trees whose
+	##                    selection has changed
+	## Returns       : -
+	## Function      : 1) ORs P_USER? with information from
+	##                    accumulated calls;
+	##                 2) Updates groups of changes with
+	##                    accumulated calls (call those A and the
+	##                    new ones B), i.e. for row selection:
+	##                    A << A + B - (A and B)
+	##                    and for cell selection, we need to keep
+	##                    track of the old selection for each tree that changed
+	##                    (i.e. for one that changed twice we should really keep its
+	##                    original selection.)
+	# notify we start changing the selection (only the first time!)
+	# this is on the only place where a :cancel_selection_change
+	# condition might be thrown, and should be handled if P_USER?
+	# is true. Effectively, this will cancel the change to the selection.
+	_if _not .int!handling_change?
+	_then
+		_self.changed(:pre_selection, p_user?)
+	_endif
+	# if we are engaged in a user-trigged nofity action, it will
+	# always remain user-triggered till the end
+	_if (p_user? _isnt _unset)
+	_then
+		.int!handling_user? << .int!handling_user? _orif p_user?
+	_endif
+	# update what changed
+	_if (p_changed_trees _isnt _unset)
+	_then
+		.int!handling_change? << _true 
+		_if _self.cell_selection?
+		_then
+			_if ((l_cur_changed_trees << .int!handling_data) _is _unset)
+			_then
+				l_cur_changed_trees << .int!handling_data << hash_table.new()
+				_for i_changed_tree _over p_changed_trees.fast_elements()
+				_loop
+					l_cur_changed_trees[i_changed_tree] << i_changed_tree.selection.default(_false)
+				_endloop
+			_else 
+				# everything that changed before, did not change now anymore
+				# (with row selection, change twice means no change)
+				_for i_changed_tree _over p_changed_trees.fast_elements()
+				_loop
+					# we need to store the old selection as it was before the trees
+					# started changing, so do not replace any
+					_if _not l_cur_changed_trees.includes_key?(i_changed_tree)
+					_then
+						l_cur_changed_trees[i_changed_tree] << i_changed_tree.selection.default(_false)
+					_endif
+				_endloop
+			_endif
+		_else
+			_if ((l_cur_changed_trees << .int!handling_data) _is _unset)
+			_then
+				.int!handling_data << set.new_from(p_changed_trees)
+			_else 
+				# everything that changed before, did not change now anymore
+				# (with row selection, change twice means no change)
+				_for i_changed_tree _over p_changed_trees.fast_elements()
+				_loop
+					_if _not l_cur_changed_trees.remove(i_changed_tree)
+					_then
+						# it did not change earlier on, so add it now
+						l_cur_changed_trees.add(i_changed_tree)
+					_endif
+				_endloop
+			_endif
+		_endif
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method display_tree_selection.int!release_notify_selection()
+	## Parameters    : -
+	## Returns       : True if the selection changed, 
+	##                 false if it did not.
+	## Function      : Mark ourselves as engaged in a change;
+	##                 Call the pre_select_notifier;
+	##                 Cause a redraw by notifing the cahges;
+	##                 Call the select_notifier;
+	##                 Throw away the changes we have just notified;
+	##                 Notify :anything_selected?;
+	##                 Check if somehow during the last things a
+	##                 new change has been made.
+	## Methodology   :
+	# notify api - custom pre select selector: done before the
+	# selection is drawn; i.e. the api-user can now deselect things
+	# without causing a flicker
+	_local l_changed? << _false 
+	_if ((l_notifier << .pre_select_notifier) _isnt _unset)
+	_then
+		.int!handling_change? << _true
+		l_notifier(_self, .int!handling_user?)
+	_endif
+	# notify api - custom select selector
+	_if ((l_notifier << .select_notifier) _isnt _unset)
+	_then
+		.int!handling_change? << _true
+		# check if anything changed, and redraw, before notifying api-user;
+		# i.e. the correct selection is already shown before the
+		# api-user start performing his reaction to the user selection
+		_if ((l_cur_changed_trees << _self.int!reset_handling_data) _isnt _unset) _andif
+		    _not l_cur_changed_trees.empty?
+		_then
+			# notify for updating the display
+			_self.changed(:selection, l_cur_changed_trees)
+			l_changed? << _true 
+		_endif
+		l_notifier(_self, .int!handling_user?)
+	_endif
+	# now is the time to stop the grouped change (the api-user might have changed something) 
+	.int!handling_change? << .int!handling_user? << _false
+	# notify for updating controls
+	_self.changed(:anything_selected?, _not _self.empty?)
+	# check if anything changed... (api-user might have changed something)
+	_if ((l_cur_changed_trees << _self.int!reset_handling_data) _isnt _unset) _andif
+	    _not l_cur_changed_trees.empty?
+	_then
+		# notify for updating the display
+		_self.changed(:selection, l_cur_changed_trees)
+		l_changed? << _true 
+	_endif
+	# notify we have finished changing the selection
+	_self.changed(:post_selection)
+	>> l_changed?
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.size
+	## Parameters    : -
+	## Returns       : The number of display_tree that are selected.
+	## Function      : To obtain the above.
+	>> _if ((l_sel_cache << .selection_cache) _is _unset)
+	   _then >> 0
+	   _else >> l_sel_cache.size
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.empty?
+	## Parameters    : -
+	## Returns       : False if there is anything selected, true if
+	##                 no display tree is selected.
+	## Function      : Check whether the selection contains anything.
+	>> .selection_cache.empty?
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method display_tree_selection.check_selection(p_selection)
+	## Parameters    : P_SELECTION: A new value that is being set
+	##                    into a display_trees selection.
+	## Returns       : A validated P_SELECTION; possibly modified.
+	## Function      : Checks if P_SELECTION is congruent with
+	##                 self's mode and .cell_selection?, if not change it:
+	##                  * If mode is :none, the selection will
+	##                    always be false.
+	##                  * If mode is cell_selection?, then all are
+	##                    allowed (e.g._true, 1, {1,2})
+	##                  * Otherwise (row selection), the selection
+	##                    will be _true if it contains anything, _false otherwise.
+	>> _if (_self.mode _is :none) _orif (p_selection _is _unset)
+	   _then
+		   >> _false
+	   _elif _self.cell_selection?
+	   _then
+		   # cell selection, all allowed (_true, 1, {1,2})
+		   >> p_selection
+	   _else 
+		   >> _if {_false, _true}.includes?(p_selection)
+		      _then >> p_selection
+		      _elif simple_vector.is_class_of?(p_selection)
+		      _then >> _not p_selection.empty?
+		      _else >> _true # it is a integer or so 
+		      _endif
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.add(p_tree, _optional p_selected_columns)
+	## Parameters    : P_TREE: Display_tree that should become selected.
+	##                 [P_SELECTED_COLUMNS]: Subset of columns that
+	##                    become selected. Defaults to _true (all columns).
+	## Returns       : _true if object has been added,
+	##                 _false otherwise.
+	## Function      : Check the selection and add P_TREE. If we cannot have a
+	##                 multiple selection, this may call the old
+	##                 selection to go.
+	_local l_new_selection << _self.check_selection(p_selected_columns.default(_true))
+	_if (l_new_selection _is _false)
+	_then
+		_self.int!remove(p_tree)
+		_return _false 
+	_endif
+	_self.int!decache()
+	# P_TREE's selection will change
+	_local l_old_handling_change? << _self.hold_notify_selection(_false, {p_tree})
+	p_tree.int!selection << l_new_selection
+	_local l_changed_trees << _unset 
+	_if (l_selection_cache << .selection_cache).includes?(p_tree)
+	_then
+		l_changed_trees << {p_tree}
+	_else 
+		# check if we are single; if so, empty first
+		_if _self.enforce_single? _then _self.empty() _endif
+		l_selection_cache.add(p_tree)
+	_endif
+	# check if we are part of a bigger change
+	_self.notify_selection(_false, l_changed_trees, l_old_handling_change?)
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.add_all(p_trees, _optional p_selected_columns)
+	## Parameters    : P_TREES: Display_tree that should become selected.
+	##                 [P_SELECTED_COLUMNS]: Subset of columns that
+	##                    become selected. Defaults to _true (all columns).
+	## Returns       : _true if an object has been added,
+	##                 _false otherwise.
+	## Function      :  Check the selection and add P_TREES. If we cannot have a
+	##                 multiple selection, this may call the old
+	##                 selection to go and will add P_TREES.an_element().
+	_if _self.enforce_single?
+	_then
+		_return _if _not p_trees.empty? _then >> _self.add(p_trees.an_element()) _else >> _false _endif
+	_endif
+	_local l_new_selection << _self.check_selection(p_selected_columns.default(_true))
+	_if (l_new_selection _is _unset) _orif (l_new_selection _is _false)
+	_then
+		_for i_tree _over p_trees.fast_elements()
+		_loop
+			_self.int!remove(i_tree)
+		_endloop
+		_return _false 
+	_endif
+	_self.int!decache()
+	# P_TREE's selection will change
+	_local l_old_handling_change? << _self.hold_notify_selection(_false, p_trees)
+	_local l_changed_trees << set.new(), l_selection_cache << .selection_cache
+	_for i_tree _over p_trees.fast_elements()
+	_loop
+		i_tree.int!selection << l_new_selection
+		_if l_selection_cache.includes?(i_tree)
+		_then
+			l_changed_trees.add(i_tree)
+		_else 
+			l_selection_cache.add(i_tree)
+		_endif
+	_endloop
+	# check if we are part of a bigger change
+	_self.notify_selection(_false, l_changed_trees, l_old_handling_change?)
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_selection.add_from_iter(p_receiver, p_iter_method, _optional p_selected_columns, _gather p_args)
+	## Parameters    : P_RECEIVER: An object, able to respond to
+	##                    the iter P_ITER_METHOD
+	##                 P_ITER_METHOD: Method to be send to
+	##                    P_RECEIVER, optionally being passed P_ARGS.
+	##                 [P_SELECTED_COLUMNS]: Subset of columns that
+	##                    become selected. Defaults to _true (all columns).
+	##                 {P_ARGS}: Optional argument to be passed to P_ITER_METHOD
+	## Returns       : _true if an object has been added,
+	##                 _false otherwise.
+	## Function      : Add all objects that are returned by sending
+	##                 P_ITER_METHOD to P_RECEIVER with P_ARGS, and set their
+	##                 selection to a (checked) P_SELECTED_COLUMNS.
+	_local l_new_trees << rope.new_from_iter(p_receiver, p_iter_method, _scatter p_args)
+	>> (_self.add_all(l_new_trees, p_selected_columns), l_new_trees)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.remove(p_tree)
+	## Parameters    : P_TREE: Display_tree that should become deselected.
+	## Returns       : _true if object P_TREE has been removed from
+	##                 selection, _false otherwise.
+	## Function      : 
+	# check if it was already deselected...
+	_if _not p_tree.selected? _then _return _self.int!remove(p_tree) _endif
+	_self.int!decache()
+	# P_TREE's selection will change
+	_local l_old_handling_change? << _self.hold_notify_selection(_false, {p_tree})
+	p_tree.int!selection << _false 
+	_local l_changed_trees << _unset 
+	_if _not .selection_cache.remove(p_tree)
+	_then
+		# inconsistent state: p_tree was selected but not in cache
+		l_changed_trees << {p_tree}
+	_endif
+	# check if we are part of a bigger change
+	_self.notify_selection(_false, l_changed_trees, l_old_handling_change?)
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.remove_all(p_trees)
+	## Parameters    : P_TREES: Display_trees that should become deselected.
+	## Returns       : _true if P_TREES has been removed from
+	##                 selection, _false otherwise.
+	## Function      : Deselect trees P_TREES, if they were selected.
+	_self.int!decache()
+	# P_TREE's selection will change
+	_local l_old_handling_change? << _self.hold_notify_selection(_false, p_trees)
+	_local l_changed_trees << set.new(), l_selection_cache << .selection_cache
+	_for i_tree _over p_trees.fast_elements()
+	_loop
+		i_tree.int!selection << _false 
+		_if _not l_selection_cache.remove(i_tree)
+		_then
+			# inconsistent state: p_tree was selected but not in cache
+			l_changed_trees.add(i_tree)
+		_endif
+	_endloop
+	# check if we are part of a bigger change
+	_self.notify_selection(_false, l_changed_trees, l_old_handling_change?)
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.empty(_optional p_change_tree_selection?)
+	## Parameters    : P_CHANGE_TREE_SELECTION?: If _true (default)
+	##                    then the selection of the trees will be changed as well.
+	##                 Use of this parameter is restricted; it
+	##                 should only be _false when the display_trees are not going
+	##                 to be manipulated anymore, or will not occur somehow in the
+	##                 tree_manager anymore.
+	## Returns       : -
+	## Function      : Clear the complete selection. By default the
+	##                 internal selection of the trees will be
+	##                 reset to deselected as well.
+	_if (l_selection_cache << .selection_cache).empty? _then _return _endif 
+	# everything now selected will change
+	_local l_old_handling_change? << _self.hold_notify_selection(_false, l_selection_cache)
+	# clear current selection
+	_if (p_change_tree_selection? _isnt _false)
+	_then
+		_for i_tree _over l_selection_cache.fast_elements()
+		_loop
+			i_tree.int!selection << _false 
+		_endloop
+	_endif
+	l_selection_cache.empty()
+	_self.int!decache()
+
+	# clear the focus tree
+	_self.focus_tree << _unset
+
+	# check if we are part of a bigger change
+	_self.notify_selection(_unset, _unset, l_old_handling_change?)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_selection.int!add(p_tree)
+	## Parameters    : P_TREE: To be added to selection
+	## Returns       : _true if object has been added,
+	##                 _false otherwise.
+	## Function      : Add P_TREE to _self, and do checks, but do
+	##                 not change internal selection of P_TREE.
+	## Methodology   : Called when P_TREE is added to the list
+	##                 and is already selected; P_TREE's selection
+	##                 state will not be modified (if the selection
+	##                 is valid, otherwise it will be un-set)
+	# ToDo: Check if this can be combined with the .add() method,
+	# so we do not have replication
+	_local l_new_selection << _self.check_selection(l_selection << p_tree.selection)
+	# validate selection
+	_if (l_new_selection _is _unset) _orif (l_new_selection _is _false)
+	_then
+		p_tree.int!selection << _false
+		_self.int!remove(p_tree)
+		_return _false 
+	_elif (l_selection _isnt l_new_selection)
+	_then
+		p_tree.int!selection << _false
+	_endif
+	_if _not (l_selection_cache << .selection_cache).includes?(p_tree)
+	_then
+		# check if we are single; if so, empty first
+		_if _self.enforce_single? _then _self.empty() _endif
+		l_selection_cache.add(p_tree)
+		_self.notify_selection()
+	_endif
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_selection.int!remove(p_tree)
+	## Parameters    : P_TREE: To be removed from selection
+	## Returns       : _true if object has been removed,
+	##                 _false otherwise.
+	## Function      : Remove P_TREE from _self, and do checks, but do
+	##                 not change internal selection of P_TREE.
+	## Methodology   : Called when P_TREE is removed from the list
+	##                 and used to be selected; P_TREE's selection
+	##                 state will not be modified
+	>> _if .selection_cache.remove(p_tree)
+	   _then
+		   # user controls should be updated
+		   _self.notify_selection()
+		   >> _true
+	   _else
+		   >> _false 
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.as_set()
+	## Parameters    : -
+	## Returns       : A new set containing all selected display_trees.
+	## Function      : 
+	>> .selection_cache.copy()
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.an_element()
+	## Parameters    : -
+	## Returns       : An arbitrary selected display_tree.
+	## Function      : 
+	>> .selection_cache.an_element()
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_iter _method display_tree_selection.fast_elements()
+	## Parameters    : -
+	## Returns       : Arbitrary iterations of all selected
+	##                 display_trees. This method does now work correctly
+	##                 if the selection changes in the mean while, in
+	##                 which case one should use .elements() instead.
+	## Function      : 
+	## Note          : If the display_trees are wanted in the same
+	##                 order as they are displayed, use
+	##                 .tree_manager.fast_selected_trees() 
+	_for i_tree _over .selection_cache.fast_elements()
+	_loop
+		_loopbody (i_tree)
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_iter _method display_tree_selection.elements()
+	## Parameters    : 
+	## Returns       : Arbitrary iterations of all selected
+	##                 display_trees. 
+	## Function      : 
+	## Methodology   : Safe (e.g. when the selection is validated
+	##                 and .selected? << _false is send to the display trees it contains)
+	## Note          : If the display_trees are wanted in the same
+	##                 order as they are displayed, use
+	##                 .tree_manager.fast_selected_trees() 
+	_for i_tree _over .selection_cache.elements()
+	_loop
+		_loopbody (i_tree)
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_iter _method display_tree_selection.fast_keys_and_elements()
+	## Parameters    : 
+	## Returns       : Arbitrary iterations of all selected display_trees:
+	##                 1) the key is given;
+	##                 2) the display_tree itself is given
+	## Function      : 
+	_for i_tree _over _self.fast_elements()
+	_loop
+		_loopbody (i_tree.key, i_tree)
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.includes?(p_tree)
+	## Parameters    : P_TREE: A display tree that is managed by
+	##                 _self's display_tree_manager.
+	## Returns       : _true if P_TREE is contained in the selection,
+	##                 _false otherwise
+	## Function      : 
+	#	>> p_tree.selected?
+	>> .selection_cache.includes?(p_tree)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.includes_key?(p_key)
+	# Author         : GE Smallworld (Ken Korsmit)
+	# Date           : Dec/2001
+	#
+	## Parameters    : P_KEY: A key that may be used by a display_tree.
+	## Returns       : _true if a display tree with P_KEY is
+	##                 contained in the selection, 
+	##                 _false otherwise
+	## Function      : 
+	## Methodology   : Keys are compared by using self's
+	##                 tree_manager key_equals procedure.
+	_local l_key_equals_proc << .tree_manager.key_equals_proc
+	_for i_tree _over _self.fast_elements()
+	_loop
+		_if l_key_equals_proc(i_tree.key, p_key)
+		_then 
+			_return _true 
+		_endif
+	_endloop
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.keys
+	## Parameters    : 
+	## Returns       : Equality_set containing all the keys of the
+	##                 selected display_trees.
+	## Function      : 
+	_local l_selection_cache << .selection_cache
+	_local l_keys << equality_set.new(l_selection_cache.size)
+	_for i_tree _over l_selection_cache.fast_elements()
+	_loop
+		l_keys.add(i_tree.key)
+	_endloop
+	>> l_keys
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_selection.set_selection(p_tree, p_row_index, _optional p_column_index)
+	## Parameters    : P_TREE: Display tree that the end-user wants
+	##                    to select.
+	##                 P_ROW_INDEX: Row on which P_TREE is
+	##                    currently displayed. (_unset if not known)
+	##                 [P_COLUMN_INDEX]: The index of the column
+	##                    that the end-user clicked on or wanted to
+	##                    become selected. 
+	## Returns       : 1) True if the selection changed, 
+	##                    false if it did not;
+	##                 2) True if setting the selection was cancelled,
+	##                    e.g. because it was not valid or an error
+	##                    during editing occurred.
+	## Function      : Clears old selection, set the new, and gives
+	##                 end-user-notification (i.e. that the
+	##                 end-user has changed the selection as
+	##                 opposed to a programmatic change)
+	_local l_changed? << _false 
+	_if (.mode _isnt :none)
+	_then
+		_try
+			_self.hold_notify_selection()
+		_when cancel_selection_change
+		        _return _self.cancel_notify_selection()
+		_endtry
+		_self.empty()
+		_self.add(p_tree, p_column_index)
+		# check if it has been removed by empty() method and added again: no change
+		l_changed? << _self.release_notify_selection(_true)
+	_endif 
+	.start_tree << p_tree
+	.start_row << p_row_index
+	.start_col << p_column_index
+	.end_tree << .end_row << .end_col << _unset
+	>> (l_changed?, _false)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_selection.toggle_selection(p_tree, _optional p_row_index, p_column_index)
+	## Parameters    : P_TREE: Display tree that the end-user wants
+	##                    to toggle the selection for.
+	##                 P_ROW_INDEX: Row on which P_TREE is
+	##                    currently displayed. (_unset if not known)
+	##                    If P_TREE is not visible, and P_ROW_INDEX
+	##                    is _unset, it will not be selected.
+	##                 [P_COLUMN_INDEX]: The index of the column
+	##                    that the end-user clicked on or wanted to
+	##                    toggle the selection for. 
+	## Returns       : 1) True if the selection changed, 
+	##                    false if it did not;
+	##                 2) True if setting the selection was cancelled,
+	##                    e.g. because it was not valid or an error
+	##                    during editing occurred.
+	## Function      : Toggles the selection for P_TREE, possibly
+	##                 only for P_COLUMN_INDEX (in case cell-selection is enabled),
+	##                 set the new selection, and give
+	##                 end-user-notification (i.e. that the
+	##                 end-user has changed the selection as
+	##                 opposed to a programmatic change)
+	# should we do this?
+	_if (.mode _is :none)
+	_then
+		_return (_false, _false)
+	_endif 
+	_if (p_row_index _is _unset)
+	_then
+		_if ((p_row_index << .tree_manager.index_of_tree(p_tree)) _is _unset)
+		_then
+			# it is not posible to select a tree that is not visible
+			_return (_false, _false)
+		_endif
+	_endif
+	# defer to normal set selection? only if we toggle 'on'
+	_local l_new_selection, l_col_selected? << p_tree.is_column_selected?(p_column_index)
+	_if _not l_col_selected? _andif _self.enforce_single?
+	_then
+		_return _self.set_selection(p_tree, p_row_index, p_column_index)
+	_endif
+	_try
+		_self.hold_notify_selection()
+	_when cancel_selection_change
+		_return _self.cancel_notify_selection()
+	_endtry
+	_if _self.cell_selection?
+	_then
+		l_new_selection << _if l_col_selected?
+				   _then >> p_tree.int!selection_remove_col(p_column_index).default(_false)
+				   _else >> p_tree.int!selection_add_col(p_column_index)
+				   _endif
+		l_col_selected? << (l_new_selection _is _false)
+	_endif 
+	_if l_col_selected?
+	_then
+		_self.remove(p_tree)
+	_else
+		_self.add(p_tree, l_new_selection)
+	_endif
+	_local l_changed? << _self.release_notify_selection(_true)
+	.start_tree << p_tree
+	.start_row << p_row_index
+	.start_col << p_column_index
+	.end_tree << .end_row << .end_col << _unset
+	>> (l_changed?, _false)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_selection.extend_selection(p_tree, p_row_index, _optional p_column_index)
+	## Parameters    : P_TREE: Display tree that the end-user wants
+	##                    to extend the selection to.
+	##                 P_ROW_INDEX: Row on which P_TREE is
+	##                    currently displayed. (must be specified)
+	##                 [P_COLUMN_INDEX]: The index of the column
+	##                    that the end-user clicked on or wanted to
+	##                    extend the selection to. 
+	## Returns       : 1) True if the selection changed, 
+	##                    false if it did not;
+	##                 2) True if setting the selection was cancelled,
+	##                    e.g. because it was not valid or an error
+	##                    during editing occurred.
+	## Function      : Extends the selection to P_TREE, possibly
+	##                 only till P_COLUMN_INDEX (in case cell-selection is enabled),
+	##                 set the new selection, and give
+	##                 end-user-notification (i.e. that the
+	##                 end-user has changed the selection as
+	##                 opposed to a programmatic change)
+	## Methodology   : If the selection gets first extended in one
+	##                 direction, and later in another, the first extension is
+	##                 discarded, i.e. the selection is extended from the place
+	##                 where it had been set in the first place. This is 'windows' CUA
+	##                 like compatible behaviour.
+	# should we do this?
+	_if (.mode _is :none)
+	_then
+		_return (_false, _false)
+	_elif _self.enforce_single? _orif ((l_start_tree << _self.start_tree) _is _unset)
+	_then
+		_return _self.set_selection(p_tree, p_row_index, p_column_index)
+	_endif
+	_local l_saved_data << {.start_tree, .start_row, .start_col}
+	_if ((l_selection << _self.int!extend_selection(p_column_index)) _is _unset) _then _return _endif
+	_try
+		_self.hold_notify_selection()
+	_when cancel_selection_change
+		_return _self.cancel_notify_selection()
+	_endtry
+	# it is not necessary to throw all away, check if the selection *only* got expanded (compared to previous one)
+	_local l_start_row << _self.start_row
+	_if (_not _self.cell_selection?) _andif 
+	    ((l_prev_end_row << .end_row) _isnt _unset) _andif
+	    (((l_prev_end_row >= l_start_row) _andif (p_row_index >= l_prev_end_row)) _orif # increase to end/bottom
+	     ((l_prev_end_row <= l_start_row) _andif (p_row_index <= l_prev_end_row))) # increase to start/top
+	_then
+		# we do not need to throw away the previous selection, since we extend that
+		l_start_tree << _self.end_tree
+	_else 
+		_self.empty()
+	_endif
+	_self.add_from_iter(.tree_manager, :|fast_range_of_visible_trees()|, l_selection, l_start_tree, p_tree, l_start_row.min(p_row_index))
+	_local l_changed? << _self.release_notify_selection(_true)
+	(.start_tree, .start_row, .start_col) << (_scatter l_saved_data)
+	.end_tree << p_tree
+	.end_row << p_row_index
+	.end_col << p_column_index
+	>> (l_changed?, _false)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_selection.int!extend_selection(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: The index of the column
+	##                    that the end-user clicked on or wanted to
+	##                    extend the selection to. 
+	## Returns       : A new, checked selection that is an extended
+	##                 version of where the selection started.
+	## Function      : 
+	_local l_selection << _true
+	_if (l_cell_selection << _self.cell_selection?)
+	_then
+		_if ((l_start_col << _self.start_col) _is _unset) _orif (p_column_index _is _unset)
+		_then
+			l_selection << _true 
+		_elif (p_column_index = l_start_col)
+		_then
+			l_selection << p_column_index
+		_else
+			_local l_visible_column_order << .visible_column_order
+			# determine the indices of start and end column in the displayed order
+			_local l_start_index << l_visible_column_order.index_of(l_start_col).default(1)
+			_local l_end_index << l_visible_column_order.index_of(p_column_index).default(l_visible_column_order.size)
+			_if (l_start_index > l_end_index)
+			_then
+				(l_start_index, l_end_index) << (l_end_index, l_start_index)
+ 			_endif
+			# extend in the displayed order
+			l_selection << rope.new()
+			_for i_col_index _over range(l_start_index, l_end_index)
+			_loop
+				l_selection.add(l_visible_column_order[i_col_index])
+			_endloop
+			l_selection << l_selection.as_simple_vector()
+		_endif
+	_endif 
+	>> _self.check_selection(l_selection)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.select_all(_optional p_column_index)
+	# Author         : GE Smallworld (Ken Korsmit)
+	# Date           : Nov/2001
+	#
+	## Parameters    : [P_COLUMN_INDEX]: The index of the column heading
+	##                    that the end-user clicked on, defaults to
+	##                    the whole row.
+	## Returns       : 1) True if the selection changed, 
+	##                    false if it did not;
+	##                 2) True if setting the selection was cancelled,
+	##                    e.g. because it was not valid or an error
+	##                    during editing occurred.
+	## Function      : Checks P_COLUMN_INDEX in relation to
+	##                 cell_selection? and apply it to all visible display trees.
+	_if (.mode _is :none)
+	_then
+		_return (_false, _false)
+	_elif _self.enforce_single?
+	_then
+		_for i_child, i_index _over .tree_manager.fast_children()
+		_loop
+			_return _self.set_selection(i_child, i_index, p_column_index)
+		_endloop
+	_elif _self.cell_selection?
+	_then
+		l_selection << p_column_index.default(_true)
+	_else
+		l_selection << _true
+	_endif
+		
+	_if ((l_selection << _self.check_selection(l_selection)) _is _unset) _then _return (_false, _true) _endif
+	_try
+		_self.hold_notify_selection()
+	_when cancel_selection_change
+		_return _self.cancel_notify_selection()
+	_endtry
+
+	_if _not .tree_manager.all_records_found?
+	_then
+		_local l_headings_holder << .tree_manager.headings_holder
+		_local l_tree_item << l_headings_holder.tree_renderer.canvas
+		_local l_msg << l_headings_holder.style_holder.message(:cannot_select_all)
+		
+		l_tree_item.top_frame.show_alert( l_msg, system_messages.human_string(:win32_acknowledge) )
+	_endif
+		
+	_local (l_success?, l_trees) << _self.add_from_iter(.tree_manager, :|fast_visible_trees()|, l_selection)
+	_local l_changed? << _self.release_notify_selection(_true)
+	_if l_success? _andif _not l_trees.empty?
+	_then
+		.start_tree << l_trees.first
+		.end_tree << l_trees.last
+		.start_row << 1
+		.end_row << l_trees.size
+		.start_col << 
+		.end_col << p_column_index
+	_endif
+
+	>> (l_changed?, _false)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.select_clear()
+	## Parameters    : -
+	## Returns       : -
+	## Function      : Clear the entire selection and mark the end-user
+	##                 as the actor. 
+	_if (.mode _isnt :none)
+	_then
+		_self.hold_notify_selection()
+		_self.empty()
+		_self.release_notify_selection(_true)
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_selection.int!decache_row_indices()
+	## Parameters    : 
+	## Returns       : 
+	## Function      : Mark the internal row-caches as invalid.
+	##                 Useful when the order of display_trees has changed.
+	.start_row << .end_row << _unset
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_selection.int!decache()
+	## Parameters    : 
+	## Returns       : 
+	## Function      : Mark all internal caches as invalid.
+	##                 Useful when a row (i.e. display_tree),
+	##                 or column, or whatever has
+	##                 been inserted or removed.
+	.start_row << .end_row << 
+	.start_col << .end_col << 
+	.start_tree << .end_tree << _unset 
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_selection.perform_on_selection(_gather p_method_and_args)
+	## Parameters    : P_METHOD_AND_ARGS: Method name, optionally
+	##                    followed by arguments.
+	## Returns       : -
+	## Function      : Send P_METHOD_AND_ARGS to each selected display_tree.
+	_for i_tree _over _self.fast_elements()
+	_loop
+		p_method_and_args.send_to(i_tree)
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method display_tree_selection.handle_keypress(p_keyb_event)
+	## Parameters    : P_KEYB_EVENT: An input event of category :keyboard.
+	## Returns       : _true if handles, _false otherwise.
+	## Function      : Act on 'up', 'down', 'PgUp', 'PgDn', 'left',
+	##                 'right', 'home' and 'end' by changing the
+	##                 selection accordingly. Behaviour is dependent on 'Shft'
+	##                 which means extending the selection; and
+	##                 whether there is a cell selection or row selection.
+	##                 Behaviour should be CUA compliant.
+	_local l_char << p_keyb_event.id, l_modmask << p_keyb_event.modmask
+	_if _not l_char.is_class_of?(character)
+	_then
+		_local l_tree_manager << .tree_manager
+		_local l_shift? << (l_modmask _is 1) #, l_control? << (l_modmask _is 2)
+		_local l_new_tree, l_new_row, l_new_col, l_ens_vis_row
+		_if ((l_char _is :up) _orif (l_char _is :kp_up)) _andif (l_modmask <= 1)
+		_then
+			l_new_row << 1.max(_self.int!current_row(l_shift?) - 1)
+		_elif ((l_char _is :down) _orif (l_char _is :kp_down)) _andif (l_modmask <= 1)
+		_then
+			l_new_row << 1.max(l_tree_manager.int!nr_expanded_subtrees.min(_self.int!current_row(l_shift?) + 1))
+		_elif ((l_char _is :left) _orif (l_char _is :kp_left)) _andif (l_modmask <= 1)
+		_then
+			_if _self.cell_selection? _andif ((l_new_col << _self.int!current_col(l_shift?)) <> _self.left_col)
+			_then
+				# let's move the cell selection to the left
+				l_new_row << _self.int!current_row(l_shift?)
+				l_new_col << _self.previous_col(l_new_col)
+			_elif (_not l_shift?) _andif ((l_new_tree << _self.start_tree) _isnt _unset) _andif
+			      (_not l_new_tree.expanded?)
+			_then
+				# this tree can not be collapsed, let's move up
+				l_new_row << 1.max(_self.int!current_row(l_shift?) - 1)
+				_if _self.cell_selection?
+				_then
+					l_new_col << _self.right_col
+				_elif l_new_tree.level > 2
+				_then 
+					# check if we can move to parent
+					l_new_row << .tree_manager.index_of_tree(l_new_tree.parent).default(l_new_row)
+				_endif
+			_else
+				_return _false
+			_endif
+		_elif ((l_char _is :right) _orif (l_char _is :kp_right)) _andif (l_modmask <= 1)
+		_then
+			_if _self.cell_selection? _andif ((l_new_col << _self.int!current_col(l_shift?)) <> _self.right_col)
+			_then
+				# let's move the cell selection to the right
+				l_new_row << _self.int!current_row(l_shift?)
+				l_new_col << _self.next_col(l_new_col)
+
+			_elif (_not l_shift?) _andif ((l_new_tree << _self.end_tree) _isnt _unset) _andif
+			      ((_not l_new_tree.children?) _orif l_new_tree.expanded?) _andif
+			      _not l_new_tree.last_child?
+			_then
+				# this tree can not be expanded, let's move down
+				l_new_row << l_tree_manager.int!nr_expanded_subtrees.min(_self.int!current_row(l_shift?) + 1)
+				_if _self.cell_selection? _then l_new_col << _self.left_col _endif
+			_else
+				_return _false
+			_endif
+		_elif ((l_char _is :page_up) _orif (l_char _is :kp_prior)) _andif (l_modmask <= 1)
+		_then
+			_local l_vis_rows << l_tree_manager.visible_rows
+			l_new_row << 1.max(_self.int!current_row(l_shift?) - l_vis_rows)
+			# ensure we scroll up one screen
+			l_ens_vis_row << 1.max(l_tree_manager.current_index - (l_vis_rows - 1))
+		_elif ((l_char _is :page_down) _orif (l_char _is :kp_next)) _andif (l_modmask <= 1)
+ 		_then
+			_local l_vis_rows << l_tree_manager.visible_rows
+			_local l_no_vis_rows << l_tree_manager.number_of_visible_trees
+			l_new_row << 1.max(l_no_vis_rows.min(_self.int!current_row(l_shift?) + l_vis_rows))
+			# ensure we scroll down one screen
+			l_ens_vis_row << l_no_vis_rows.min(l_tree_manager.current_index + 2 * (l_vis_rows - 1))
+		_elif (l_char _is :home) _orif (l_char _is :kp_home)
+		_then
+			_if .cell_selection? _andif (l_modmask <= 1)
+			_then
+				l_new_row << _self.int!current_row(l_shift?)
+				l_new_col << _self.left_col
+			_else 
+				l_new_row << 1
+				l_ens_vis_row << l_tree_manager.visible_rows
+			_endif
+		_elif (l_char _is :end) _orif (l_char _is :kp_end)
+		_then
+			_if .cell_selection? _andif (l_modmask <= 1)
+			_then
+				l_new_row << _self.int!current_row(l_shift?)
+				l_new_col << _self.right_col
+			_else 
+				l_new_row << l_tree_manager.number_of_visible_trees
+				l_ens_vis_row << l_new_row - l_tree_manager.visible_rows
+			_endif 
+		_else
+			_return _false 
+		_endif
+
+		l_new_tree << l_tree_manager.nth_tree(l_new_row)
+		_if (l_new_tree _is _unset)
+		_then
+			# something is wrong, the index must be out of range, or we do
+			# not have any tree at all
+			_return _false 
+		_endif
+		# ToDo! Make this work for cell selection: , _optional p_column_index
+		_if (l_new_col _is _unset)
+		_then
+			l_new_col << _self.int!current_col(l_shift?)
+		_endif
+
+		# Disable the background process to ensure, if appropriate, new
+		# records are retrieved before the selection is changed and the
+		# trees are redrawn.
+		_if ( win << external_ref.for_id( p_keyb_event.window ) ) _isnt _unset _andif
+		    ( l_tree_item << win.ref ).responds_to?( :|allow_background_process?| )
+		_then
+			l_background? << l_tree_item.allow_background_process? ^<< _false
+		_endif
+		
+		_if l_shift?
+		_then
+			_self.extend_selection(l_new_tree, l_new_row, l_new_col)
+			_if l_background? _isnt _unset
+			_then
+				l_tree_item.allow_background_process? << l_background?
+			_endif
+			_return (_true, l_new_tree, l_new_row, l_new_col, _self.start_row, _self.start_col)
+		_else
+			_self.set_selection(l_new_tree, l_new_row, l_new_col)
+			_if l_background? _isnt _unset
+			_then
+				l_tree_item.allow_background_process? << l_background?
+			_endif
+			_return (_true, l_new_tree, l_new_row, l_new_col, l_ens_vis_row)
+		_endif
+	_endif
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method display_tree_selection.int!current_row(p_end?)
+	## Parameters    : P_END?: Boolean
+	## Returns       : Depending on P_END?, the last (end) row or
+	##                 the first (start) row of the selection is returned.
+	## Function      : 
+	>> _if p_end? _then >> _self.end_row _else >> _self.start_row _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method display_tree_selection.int!current_col(p_end?)
+	## Parameters    : P_END?: Boolean
+	## Returns       : Depending on P_END?, the last (end) column index or
+	##                 the first (start) column index of the selection is returned.
+	## Function      : 
+	>> _if p_end? _then >> _self.end_col _else >> _self.start_col _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.start_tree
+	## Parameters    : -
+	## Returns       : The top-most tree in the display_tree_managers
+	##                 list that is selected.
+	## Function      : 
+	_if ((l_start_tree << .start_tree) _isnt _unset) _orif _self.empty?
+	_then
+		_return l_start_tree
+	_endif
+	_for i_tree, i_index _over _self.tree_manager.fast_visible_trees(.start_row)
+	_loop
+		_if i_tree.selected?
+		_then
+			_return (.start_tree << i_tree, .start_row << i_index)
+		_endif
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.end_tree
+	## Parameters    : 
+	## Returns       : The last tree in the display_tree_managers
+	##                 list that is selected.
+	## Function      : 
+	_if ((l_end_tree << .end_tree) _isnt _unset) _orif _self.empty?
+	_then
+		_return l_end_tree
+	_elif (.end_row _isnt _unset)
+	_then
+		_return _self.tree_manager.nth_tree(.end_row)
+	_endif
+	# do something clever: stop when we have checked the selection
+	_local l_left_to_check << _self.size
+	_for i_tree, i_index _over _self.tree_manager.fast_visible_trees(.start_row)
+	_loop
+		_if i_tree.selected?
+		_then
+			l_end_tree << i_tree
+			l_end_row << i_index
+			_if ((l_left_to_check -<< 1) <= 0) _then _leave _endif
+		_endif
+	_endloop
+	>> (.end_tree << l_end_tree, .end_row << l_end_row)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.start_row
+	## Parameters    : -
+	## Returns       : The row index of top-most tree in the
+	##                 display_tree_managers list that is selected.
+	## Function      : 
+	## Methodology   :
+	_if ((l_start_row << .start_row) _isnt _unset)
+	_then
+		_return l_start_row
+	_endif
+	(l_start_tree, l_start_row) << _self.start_tree
+	_if (l_start_tree _is _unset)
+	_then
+		_return 1
+	_elif (l_start_row _isnt _unset)
+	_then
+		_return l_start_row
+	_endif
+	>> .tree_manager.index_of_tree(l_start_tree).default(1)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_selection.end_row
+	## Parameters    : 
+	## Returns       : The index of the last tree in the
+	##                 display_tree_managers list that is selected.
+	## Function      : 
+	_if ((l_end_row << .end_row) _isnt _unset)
+	_then
+		_return l_end_row
+	_endif
+	(l_end_tree, l_end_row) << _self.end_tree
+	_if (l_end_tree _is _unset)
+	_then
+		_return 1
+	_elif (l_end_row _isnt _unset)
+	_then
+		_return l_end_row
+	_endif
+	>> .tree_manager.index_of_tree(l_end_tree).default(1)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_selection.start_col
+	## Parameters    : -
+	## Returns       : The index of the column where the selection
+	##                 started. If this is unknown (e.g. because it has been
+	##                 decached) the first selected column is used of the start_tree.
+	##                 If that does not exist, the left most column is returned.
+	## Function      : 
+	>> _if ((l_start_col << .start_col) _isnt _unset)
+	   _then >> l_start_col
+	   _elif ((l_start_tree << _self.start_tree) _isnt _unset)
+	   _then >> .start_col << l_start_tree.first_selected_column
+	   _else >> _self.left_col
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_selection.end_col
+	## Parameters    : -
+	## Returns       : The index of the column where the selection
+	##                 has been extended to. If this is unknown (e.g. because it has been
+	##                 decached) the last selected column is used of the end_tree.
+	##                 If that does not exist, the left most column is returned.
+	## Function      : 
+	>> _if ((l_end_col << .end_col) _isnt _unset)
+	   _then >> l_end_col
+	   _elif ((l_end_tree << _self.end_tree) _isnt _unset)
+	   _then >> .end_col << l_end_tree.last_selected_column
+	   _else >> _self.right_col
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method display_tree_selection.left_col
+	## Parameters    : -
+	## Returns       : Index of first (left most) displayed column
+	## Function      : 
+	>> .visible_column_order.an_element().default(1)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method display_tree_selection.right_col
+	## Parameters    : -
+	## Returns       : Index of last (right most) displayed column
+	## Function      : 
+	>> _if _not (l_visible_column_order << .visible_column_order).empty?
+	   _then >> l_visible_column_order.last
+	   _else >> 1
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method display_tree_selection.previous_col(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: Index of a column
+	## Returns       : The index of the column displayed to the
+	##                 left of P_COLUMN_INDEX; if P_COLUMN_INDEX is
+	##                 currently not displayed, the first (left
+	##                 most) displayed column is returned. 
+	## Function      : 
+	>> _if ((l_cur_index << (l_visible_column_order << .visible_column_order).index_of(p_column_index)) _isnt _unset) _andif
+	       (l_cur_index > 1)
+	   _then >> l_visible_column_order[l_cur_index - 1]
+	   _else >> _self.left_col
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method display_tree_selection.next_col(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: Index of a column
+	## Returns       : The index of the column displayed to the
+	##                 right of P_COLUMN_INDEX; if P_COLUMN_INDEX is
+	##                 currently not displayed, the last (right
+	##                 most) displayed column is returned. 
+	## Function      : 
+	>> _if ((l_cur_index << (l_visible_column_order << .visible_column_order).index_of(p_column_index)) _isnt _unset) _andif
+	       (l_cur_index < l_visible_column_order.size)
+	   _then >> l_visible_column_order[l_cur_index + 1]
+	   _else >> _self.right_col
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method display_tree_selection.note_change(p_who, p_what, p_value)
+	## Parameters    : P_WHO: Object that issued the change notification.
+	##                 P_WHAT: The aspect that changed: One of
+	##                  * :visible_column_order
+	##                 P_VALUE: Optional extra argument;
+	##                  * In case P_WHAT is :visible_column_order,
+	##                    this a list of new column indices.
+	## Returns       : -
+	## Function      : React to change notifications.
+	## Methodology   : Subclasses must call super method.
+	_if (p_what _is :visible_column_order)
+	_then
+		# this will be used from here on to get correct selections
+		.visible_column_order << p_value
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_selection.change_notification_on_hold?
+	## Parameters    : 
+	## Returns       : True if a notification is on hold for a
+	##                 change in the selection, .i.e. we are handling a change and
+	##                 some trees are known to have changed selection already;
+	##                 false otherwise.
+	## Function      : 
+	## Methodology   :
+	>> .int!handling_change? _andif ((l_changes << .int!handling_data) _isnt _unset) _andif (_not l_changes.empty?)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method display_tree_selection.int!reset_handling_data
+	## Parameters    : 
+	## Returns       : Set of trees whose selection has changed
+	## Function      : Reset .int!handling_data such that no trees
+	##                 are marked as having been changed selection,
+	##                 and return a set of those that have changed.
+	_if ((l_handling_data << .int!handling_data ^<< _unset) _is _unset)
+	_then
+		_return 
+	_elif _self.cell_selection?
+	_then
+		# compare old selection with new, the tree only changed when they are not 'equal'
+		l_cur_changed_trees << set.new(l_handling_data.size)
+		_for i_changed_tree, i_old_selection _over l_handling_data.fast_keys_and_elements()
+		_loop
+			_local l_new_selection << i_changed_tree.selection.default(_false)
+			_if (l_new_selection _isnt i_old_selection) _andif _not 
+			    (simple_vector.is_class_of?(l_new_selection) _andif
+			     simple_vector.is_class_of?(i_old_selection) _andif
+			     l_new_selection.eq?(i_old_selection))
+			_then
+				l_cur_changed_trees.add(i_changed_tree)
+			_endif
+		_endloop
+	_else
+		# simple: we have the set already at hand
+		l_cur_changed_trees << l_handling_data
+	_endif
+	>> l_cur_changed_trees
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_selection.new_from(p_another)
+	## Parameters    : P_ANOTHER: A display_tree_selection.
+	## Returns       : A new display_tree_selection, created from _self;
+	##                 however it will remain related,
+	## Function      : This should not be used. Use .new() instead.
+	_if _not p_another.is_class_of?(_self) 
+	_then
+		condition.raise(:error, :string, "Can only do .new_from() on same class: " + _self.class_name)
+	_endif
+	>> _super.new_from(p_another)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method display_tree_selection.precisely_one_selected?
+	## Parameters    : -
+	## Returns       : True if precisely one item is selected
+	##                 (that is, one row in case of row selection,
+	##                  one cell in case of cell_selection?),
+	##                 False otherwise.
+	## Function      : 
+	_if (_self.size _isnt 1)
+	_then
+		_return _false 
+	_endif
+	_local l_selection << _self.an_element().selection
+	>> _if _self.cell_selection?
+	   _then >> l_selection.is_class_of?(integer)
+	   _else >> (l_selection _is _true)
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={subclassable})
+_method display_tree_selection.as_charvec()
+	## Parameters    : -
+	## Returns       : A string, containing the textual output of a
+	##                 styled string (slices) of the selected
+	##                 (parts) of the selected display_trees.
+	## Function      : Return selected parts of selected display
+	##                 trees as a text. Note that the selection
+	##                 does not know about column ordering and will
+	##                 not take those into account. 
+	_local l_cell? << _self.cell_selection?
+	# determine first and last columns
+	_if l_cell?
+	_then
+		_for i_tree _over _self.fast_elements()
+		_loop
+			_if (l_first_col _is _unset)
+			_then
+				l_first_col << i_tree.first_selected_column
+			_elif (l_first_col = 1)
+			_then
+				# cannot get any smaller
+				_leave 
+			_else
+				l_first_col << l_first_col.min(i_tree.first_selected_column)
+			_endif
+		_endloop
+	_endif
+	_local l_out << internal_text_output_stream.new()
+	first? << _true
+	_for i_tree, i_index _over .tree_manager.fast_selected_trees()
+	_loop
+		# Output a single newline between output for each tree in the
+		# selection
+		_if first?
+		_then
+			first? << _false
+		_else
+			l_out.newline()
+		_endif
+		
+		# write data
+		_if l_cell?
+		_then
+			_local l_t_index << l_first_col
+			_for i_column_nr _over i_tree.selected_columns()
+			_loop
+				# check for tab(s)
+				_for i_t _over range(l_t_index + 1, i_column_nr)
+				_loop
+					l_out.write(tab_char)
+				_endloop
+				l_t_index << i_column_nr
+				# write data
+				l_out.write(i_tree.as_charvec(i_column_nr))
+			_endloop
+		_else
+			l_out.write(i_tree.as_charvec())
+		_endif
+	_endloop
+	>> l_out.string
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_selection.focus_column
+	## 
+	## Returns the column index which has focus or unset if cell
+	## selection is not possible.
+	## This is used to indicate focus when there is no selection.
+	
+	>> .focus_column
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_selection.focus_tree
+	## 
+	## Returns a display tree which has focus or unset if the tree
+	## is empty.
+	## This is used to indicate focus when there is no selection.
+
+	_if .focus_tree _is _unset
+	_then
+		l_default_index << _self.start_row.min( .tree_manager.number_of_visible_trees )
+		_if l_default_index > 0
+		_then
+			.focus_tree << .tree_manager.nth_tree( l_default_index )
+		_endif 
+	_endif
+
+	_if .cell_selection?
+	_then
+		.focus_column << _self.start_col
+	_endif
+		
+	>> .focus_tree
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_selection.focus_tree << a_tree
+	## 
+	## Sets the display tree A_TREE which has focus.
+
+	.focus_tree << a_tree
+
+	_if .cell_selection?
+	_then
+		# If cells can be selected store the first selected column
+		_if a_tree _isnt _unset
+		_then
+			.focus_column << a_tree.first_selected_column
+		_else
+			.focus_column << 1
+		_endif
+	_endif
+
+_endmethod
+$
+

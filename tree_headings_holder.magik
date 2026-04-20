@@ -1,0 +1,2239 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=advanced, topic={tree_item})
+## The tree_headings_holder contains all data for displaying row
+## and column headings. It is created by the tree_item and does
+## not need 'manual' creation by the api-user. It knows about
+## the order of column, their visibilities and selectabilities,
+## column sorting, and row and column dimensions.
+##
+## Supported properties:
+## :model : is a readonly property only used on initialisation to
+##    get a message acceessor from; the message_accessor is
+##    retained (internally) for retrieving heading texts.
+## :column_headings : simple_vector containing texts that
+##    identify the columns to the user; if not supplied, they will
+##    be derived using :column_heading_ids (and preferably :model's
+##    message_accessor)
+## :column_heading_ids : simple_vector containing IDs to
+##    identify the columns with. If a model is known, they can
+##    be automatically translated into :column_headings.
+## :column_headings_styled_strings : Vector of simple_vectors
+##    with contents that are acceptable to generate
+##    styled_strings of. These will be used as heading texts in
+##    the column headings. For four columns showing mail, an example could be:
+##    {{:image, :send_priority}, {:image, :read_status}, {"From"}, "Subject"}.
+##    Needs to have the same number of entries as there are columns.
+## :column_widths : Vector of widths for the columns as they
+##    will be used for drawing.
+## :column_min_widths : Vector of minimal widths for the
+##    columns that the columns; the end user cannot make a
+##    column smaller than this value, during resizing.
+## :column_visibilities : Vector of booleans that denotes which
+##    columns will be drawn (visible) or hidden. Needs to have
+##    the same number of entries as there are columns.
+## :column_alignments : Vector with alignment values for each
+##    column, each on of {:left, :right, :centre (or
+##    :center)}. Needs to have the same number of entries as there are columns.
+## :column_selectabilities: Vector of booleans that denotes which
+##    columns have selectable cells. The default for each
+##    column is true, and if it is false it will be drawn in a
+##    special way (similar to a row headings). Needs to have
+##    the same number of entries as there are columns.
+## :column_allow_sort? : if _true (default, unless
+##    :cell_selection? is _false, in which case it defaults to
+##    false), then the rows (display_trees) will be sorted when
+##    the user clicks on the column heading; if _false, then the
+##    user can select the column by doing this (if
+##    :cell_selection is :false, all will be selected.)
+## :column_sort_selectors : contains the order procedures and
+##    their arguments per column used for sorting. An order procedure can be a
+##    procedure, or a name known by sorted_collection. The default
+##    is {{:display_tree, <column_number>}, ...}
+## :row_headings? : Set whether row headings should be drawn or
+##    not (_false by default)
+## :row_headings_alignment : Set the alignment for the row
+##    headings to :left, :centre, or :right (or :center). 
+## :row_headings_width: Width to be used for row headings, if
+##    :row_headings? is set to true. 
+## :column_pick_lists:
+##    Denotes the values per column, that can be used to slice the
+##    displayed data. This pick-lists can be used for filtering
+##    (when enabled).
+##    This should be specified as a vector, as are the other
+##    column properties. If an entry for the nth column is unset,
+##    it means it does not have a-priori values available to
+##    filter by. If it is specified, this will consist of a
+##    vector of items; see sw_action for a specification of
+##    items (an item can be a {<value>, <string>}. Alternatively,
+##    this may be a handler that returns such a list of items.
+## :row_heading_selector: If supplied, this handler will be
+##    invoked to retrieve When invoked, it will be passed three
+##    parameters: 
+##    P_ROW_NR: Integer denoting the current row.
+##    P_VALUE_HOLDER: The current value-holder as used by the renderer;
+##       most of the times this will be a display_tree.
+##    P_STYLE_HOLDER: String_styles_holder, used to contain all
+##       style information
+##    It should return:
+##    1) any value, that should go in the 0th column,
+##    2) optionally, :image, to denote that (1) refers to an
+##       image; of a text_style name, which will
+##       be used when drawing (1) 
+## 
+def_slotted_exemplar(:tree_headings_holder,
+{
+	{:message_accessor,               _unset},
+	{:tree_manager,                   _unset},
+	{:tree_renderer,                  _unset},
+	{:styled_string,                  _unset},
+	{:column_heading_ids,             _unset},
+	{:column_headings,                _unset},
+	{:column_headings_styled_strings, _unset},
+	{:column_widths,                  _unset},
+	{:column_min_widths,              _unset},
+	{:column_visibilities,            _unset},
+	{:column_allow_sort?,             _true},
+	{:column_alignments,              _unset}, 
+	{:column_selectabilities,         _unset},
+	{:column_orderings,               _unset},
+	{:column_sort_selectors,          _unset},
+	{:column_pick_lists,              _unset},
+	{:retain_sort_order?,             _false}, # ToDo: when data are refreshed (not renewed)
+	{:sort_order,                     _unset},
+	{:group_order,                    _unset},
+	{:visible_rows,                   0},
+	{:row_headings?,                  _false},
+	{:row_headings,                   _unset},
+	{:row_headings_alignment,         :centre},
+	{:row_headings_width,             30},
+	{:row_col_heading,                ""},
+	{:row_heights,                    _unset},
+	{:height,                         _unset},
+	{:width,                          _unset},
+	{:cached_tabs,                    _unset},
+	{:distribute_spare_width,         :initial_enlarge}, 
+	{:col_resize_values,              _unset},
+	{:default_column_widths,          _unset},
+	{:default_column_visibilities,    _unset},
+	{:default_column_orderings,       _unset},
+	{:allow_row_height_resize?,       _true}, # defaults to :fixed_rowheight?
+	{:top_headings_data,              _unset}, # ToDo: Allow grouping column headings
+	{:keep_columns_together_data,     _unset}, # ToDo: Restricts the freedom of re-ordering columns
+	{:row_heading_selector,           _unset},
+	{:int!old_width,                  _unset}
+})
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Display tree manager containing all the display trees.
+tree_headings_holder.define_slot_access(:tree_manager, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Tree renderer to render display_trees. Is needed to
+## determine optimal width.
+tree_headings_holder.define_slot_access(:tree_renderer, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Set whether row headings should be drawn or
+## not (_false by default)
+tree_headings_holder.define_slot_access(:row_headings?, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Set the alignment for the row
+## headings to :left, :centre, or :right (or :center). 
+tree_headings_holder.define_slot_access(:row_headings_alignment, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Text to go in top/left panel shown when we have both row-
+## and column headings.
+tree_headings_holder.define_slot_access(:row_col_heading, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## simple_vector containing texts that
+## identify the columns to the user; if not supplied, they will
+## be derived using :column_heading_ids (and preferably :model's
+## message_accessor)
+tree_headings_holder.define_slot_access(:column_headings, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## simple_vector containing IDs to
+## identify the columns with. If a model is known, they can
+## be automatically translated into :column_headings.
+tree_headings_holder.define_slot_access(:column_heading_ids, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Vector of simple_vectors
+## with contents that are acceptable to generate
+## styled_strings of. These will be used as heading texts in
+## the column headings. For four columns showing mail, an example could be:
+## {{:image, :send_priority}, {:image, :read_status}, {"From"}, "Subject"}.
+## Needs to have the same number of entries as there are columns.
+tree_headings_holder.define_slot_access(:column_headings_styled_strings, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Vector of booleans that denotes which
+## columns will be drawn (visible) or hidden. Needs to have
+## the same number of entries as there are columns.
+tree_headings_holder.define_slot_access(:column_visibilities, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## if _true (default, unless
+## :cell_selection? is _false, in which case it defaults to
+## false), then the rows (display_trees) will be sorted when
+## the user clicks on the column heading; if _false, then the
+## user can select the column by doing this (if
+## :cell_selection is :false, all will be selected.)
+tree_headings_holder.define_slot_access(:column_allow_sort?, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Vector with alignment values for each
+## column, each on of {:left, :right, :centre (or
+## :center)}. Needs to have the same number of entries as there are columns.
+tree_headings_holder.define_slot_access(:column_alignments, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Vector of booleans that denotes which
+## columns have selectable cells. The default for each
+## column is true, and if it is false it will be drawn in a
+## special way (similar to a row headings). Needs to have
+## the same number of entries as there are columns.
+tree_headings_holder.define_slot_access(:column_selectabilities, :readable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## contains the order procedures and
+## their arguments per column used for sorting. An order procedure can be a
+## procedure, or a name known by sorted_collection. The default
+## is {{:display_tree, <column_number>}, ...}
+tree_headings_holder.define_slot_access(:column_sort_selectors, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Denotes how we are sorted:
+##  * _unset means we are not;
+##  * positive integer means we are sorted ascending on that column
+##  * negative integer means we are sorted decending on that column
+##  * possible in a future implementation we can sort on a
+##    simple_vector of those (multiple columns)
+tree_headings_holder.define_slot_access(:sort_order, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Denotes the fractions with which columns will resize when
+## the end-user resizes the columns. For example, if one has 5
+## columns, and column 2 should resize half as much as column
+## 5, whereas the other columns should not resize at all, then
+## the :col_resize_values could be {0, 33, 0, 0, 67}.
+## (It is not strictly necessary the values add up to 100, but
+## that is more consistent with the other :col_resize_values
+## elsewhere in the product).
+##
+## By default, the :col_resize_values will be {1, 1, ...} for
+## every column, and this will be used only for extension of
+## the widths during activation. See also :distribute_spare_width. 
+tree_headings_holder.define_slot_access(:col_resize_values, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Defines how columns are resized automatically.
+## :never means that columns will not be resized automatically
+##    at all. (Compare to Windows File Explorer.)
+## :initial means that column_widths will be resized to fit on
+##    activation of the tree_item. (The tree_item will call
+##    tree_headings_holder.min_width << ).
+## :initial_extend means that column_widths may be extended if
+##    necessary on activation of the tree_item
+## :always means that whenever the available width for
+##    columns changes, this is used such that the current visible
+##    columns will consume the available width (regarding some
+##    contraints such as min_width). (Compare to MS Outlook).
+##
+## For compatibility's sake, the following values are
+## temporarily allowed when passed on creation:
+## (These options are depricated now).
+## :all: will set :col_resize_values to {1, 1, ..., 0} and then
+##    change to :initial_extend; thus causing all columns to
+##    fill up any space left over.
+## :last will set :col_resize_values to {0, 0, ..., 1} and then
+##    change to :initial_extend; thus causing the last column to
+##    fill up any space left over.
+tree_headings_holder.define_slot_access(:distribute_spare_width, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Vector of widths for the columns as they
+## will be used for drawing.
+tree_headings_holder.define_slot_access(:column_widths, :readable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Vector of minimal widths for the
+## columns that the columns; the end user cannot make a
+## column smaller than this value, during resizing.
+##
+## Note that each minimal width should be at least
+## string_styles_holder.min_cell_w (12).
+tree_headings_holder.define_slot_access(:column_min_widths, :readable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={external})
+## If supplied, this handler will be invoked
+## to retrieve When invoked, it will be passed
+## three parameters:
+## P_ROW_NR: Integer denoting the current row.
+## P_VALUE_HOLDER: The current value-holder as used by the renderer;
+##    most of the times this will be a display_tree.
+## P_STYLE_HOLDER: String_styles_holder, used to contain all
+##    style information
+## It should return:
+## 1) any value, that should go in the 0th column,
+## 2) optionally, :image, to denote that (1) refers to an
+##    image; of a text_style name, which will
+##    be used when drawing (1) 
+tree_headings_holder.define_slot_access(:row_heading_selector, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={external})
+## Denotes the values per column, that can be used to slice the
+## displayed data. This pick-lists can be used for filtering
+## (when enabled).
+##
+## This should be specified as a vector, as are the other
+## column properties. If an entry for the nth column is unset,
+## it means it does not have a-priori values available to
+## filter by. If it is specified, this will consist of a vector
+## of items; see sw_action for a specification of items (an
+## item can be a {<value>, <string>}. Alternatively, this may
+## be a handler that returns such a list of items.
+tree_headings_holder.define_slot_access(:column_pick_lists, :writable)
+$
+
+#tree_headings_holder.define_shared_constant(:default_row_headings_width, 30, :private)
+#$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={subclassable})
+## Contains a list of properties that are defined on self
+tree_headings_holder.define_shared_constant(:exported_properties,
+	set.new_with( :column_headings,        :column_heading_ids,     :column_headings_styled_strings,
+		      :column_widths,          :column_min_widths,      :column_visibilities,
+		      :distribute_spare_width, :column_allow_sort?,     :column_alignments,
+		      :column_selectabilities, :column_sort_selectors,  :row_headings?,
+		      :row_headings_alignment, :row_headings_width,     :value_formatters,
+		      :col_resize_values,      :column_pick_lists,      :row_heading_selector,
+		      :column_orderings,       :retain_sort_order?
+	    ),
+	:public)
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method tree_headings_holder.new(p_properties)
+	## Parameters    : P_PROPERTIES: Property_list with
+	##                    key values that are understood by self.
+	## Returns       : A new initialised instance of _self
+	## Function      : Create ^^^.
+	## 
+	## The tree_headings_holder contains all data for displaying row
+	## and column headings. It is created by the tree_item and does
+	## not need 'manual' creation by the api-user. It knows about
+	## the order of column, their visibilities and selectabilities,
+	## column sorting, and row and column dimensions.
+	##
+	## Supported properties:
+	## :model : is a readonly property only used on initialisation to
+	##    get a message acceessor from; the message_accessor is
+	##    retained (internally) for retrieving heading texts.
+	## :column_headings : simple_vector containing texts that
+	##    identify the columns to the user; if not supplied, they will
+	##    be derived using :column_heading_ids (and preferably :model's
+	##    message_accessor)
+	## :column_heading_ids : simple_vector containing IDs to
+	##    identify the columns with. If a model is known, they can
+	##    be automatically translated into :column_headings.
+	## :column_headings_styled_strings : Vector of simple_vectors
+	##    with contents that are acceptable to generate
+	##    styled_strings of. These will be used as heading texts in
+	##    the column headings. For four columns showing mail, an example could be:
+	##    {{:image, :send_priority}, {:image, :read_status}, {"From"}, "Subject"}.
+	##    Needs to have the same number of entries as there are columns.
+	## :column_widths : Vector of widths for the columns as they
+	##    will be used for drawing.
+	## :column_min_widths : Vector of minimal widths for the
+	##    columns that the columns; the end user cannot make a
+	##    column smaller than this value, during resizing.
+	## :column_visibilities : Vector of booleans that denotes which
+	##    columns will be drawn (visible) or hidden. Needs to have
+	##    the same number of entries as there are columns.
+	## :column_alignments : Vector with alignment values for each
+	##    column, each on of {:left, :right, :centre (or
+	##    :center)}. Needs to have the same number of entries as there are columns.
+	## :column_selectabilities: Vector of booleans that denotes which
+	##    columns have selectable cells. The default for each
+	##    column is true, and if it is false it will be drawn in a
+	##    special way (similar to a row headings). Needs to have
+	##    the same number of entries as there are columns.
+	## :column_allow_sort? : if _true (default, unless
+	##    :cell_selection? is _false, in which case it defaults to
+	##    false), then the rows (display_trees) will be sorted when
+	##    the user clicks on the column heading; if _false, then the
+	##    user can select the column by doing this (if
+	##    :cell_selection is :false, all will be selected.)
+	## :column_sort_selectors : contains the order procedures and
+	##    their arguments per column used for sorting. An order procedure can be a
+	##    procedure, or a name known by sorted_collection. The default
+	##    is {{:display_tree, <column_number>}, ...}
+	## :row_headings? : Set whether row headings should be drawn or
+	##    not (_false by default)
+	## :row_headings_alignment : Set the alignment for the row
+	##    headings to :left, :centre, or :right (or :center). 
+	## :row_headings_width: Width to be used for row headings, if
+	##    :row_headings? is set to true.
+	## :column_orderings: The ordering of the columns; The default
+	##    value is {1, 2, ..., n} in case of n columns.
+	>> _clone.init(p_properties)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal, subclassable})
+_private _method tree_headings_holder.init(p_properties)
+	## Parameters    : P_PROPERTIES: Property_list with
+	##                    key values that are understood by self.
+	##                    See class comments for a list of properties
+	## Returns       : Self 
+	## Function      : Instantiates a new instance of self
+	.message_accessor << _if ((l_model << p_properties[:model]) _isnt _unset) _andif l_model.responds_to?(:message_accessor)
+			     _then >> l_model.message_accessor
+			     _else >> message_handler.new(:gen_graphics)
+			     _endif
+	.tree_manager << p_properties[:tree_manager]
+	.tree_renderer << p_properties[:renderer]
+	.row_headings? << p_properties[:row_headings?].default(_false)
+	.row_headings_alignment << p_properties[:row_headings_alignment].default(:centre)
+	.row_headings_width << p_properties[:row_headings_width].default(30)
+	.row_heading_selector << p_properties[:row_heading_selector]
+	.column_headings << p_properties[:column_headings]
+	.column_heading_ids << p_properties[:column_heading_ids]
+	.column_headings_styled_strings << p_properties[:column_headings_styled_strings]
+	.column_widths << p_properties[:column_widths]
+	.column_min_widths << p_properties[:column_min_widths]
+	.column_visibilities << p_properties[:column_visibilities]
+	.column_allow_sort? << p_properties[:column_allow_sort?].default(p_properties[:cell_selection?] _isnt _true)
+	.column_sort_selectors << p_properties[:column_sort_selectors]
+	.retain_sort_order? << p_properties[:retain_sort_order?].default(_false)
+	.column_alignments << p_properties[:column_alignments]
+	.column_selectabilities << p_properties[:column_selectabilities]
+	.column_pick_lists << p_properties[:column_pick_lists]
+	.column_orderings << p_properties[:column_orderings]
+
+	_local l_dsw << p_properties[:distribute_spare_width]
+	_local l_crv << p_properties[:col_resize_values]
+	# option :all gets translated to initial_enlarge all columns to fit width
+	# option :last gets translated to initial_enlarge last column to fit width
+	# if :col_resize_values have been supplied, then by default they will :always be set
+	# if none is supplied, the default is to enlarge the rest width initially
+	_if (l_dsw _is :all) 
+	_then
+		l_dsw << :initial_enlarge
+	_elif (l_dsw _is _unset)
+	_then
+		_if (l_crv _is _unset)
+		_then
+			l_dsw << :initial_enlarge
+		_else
+			l_dsw << :always
+		_endif
+	_elif (l_dsw _is :last)
+	_then
+		l_dsw << :initial_enlarge
+		_local l_max_cols << .column_headings.default(.column_heading_ids).default({1}).size
+		l_crv << simple_vector.new(l_max_cols).fill_with(0)
+		l_crv[l_max_cols] << 1
+	_endif
+	.distribute_spare_width << l_dsw
+	.col_resize_values << l_crv
+	_self.int!set_dependencies()
+	>> _self
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_private _method tree_headings_holder.int!set_dependencies()
+	## Makes self dependent on objects / aspects we are interested in:
+	##  * tree_manager / :data
+	##  * style_holder / :height
+	## Make some other objects dependent on _self
+	##  * tree_manager / :column_visibility?
+	##  * selection / :visible_column_order
+	.tree_manager.add_dependent(_self, :data)
+	_self.style_holder.add_dependent(_self, :height)
+	_self.add_dependent(.tree_manager, :column_visibility?)
+	_self.add_dependent(.tree_manager.selection, :visible_column_order)
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_private _method tree_headings_holder.int!remove_dependencies()
+	## Undoes self's dependency on objects / aspects we are interested in:
+	##  * tree_manager / :data
+	##  * style_holder / :height
+	## Undoes some other objects' dependency on _self
+	##  * tree_manager / :column_visibility?
+	##  * selection / :visible_column_order
+	.tree_manager.remove_dependent(_self, :data)
+	_self.style_holder.remove_dependent(_self, :height)
+	_self.remove_dependent(.tree_manager, :column_visibility?)
+	_self.remove_dependent(.tree_manager.selection, :visible_column_order)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.style_holder
+	## Parameters    : 
+	## Returns       : Style holder as used by renderer.
+	## Function      : 
+	>> .tree_renderer.style_holder
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.tab_info(p_tab_count)
+	## Parameters    : P_TAB_COUNT: Column number that is desired
+	##                    0 means the row-headers column.
+	## Returns       : 1) Left x-position for column nr P_TAB_COUNT
+	##                 2) Right x-position for column nr P_TAB_COUNT
+	##                 3) Column visibility
+	##                 4) Column alignment
+	##                 5) Column selectability
+	## Function      : Obtain information for drawing this column
+	##                 quick and in one go.
+	_self.int!check_initialised()
+	>> _if p_tab_count.in_range?(1, .column_headings.size)
+	   _then
+		   l_width << _if (l_vis? << .column_visibilities[p_tab_count]) _then >> .column_widths[p_tab_count] _else >> 0 _endif
+		   >> (l_x << .cached_tabs[p_tab_count], l_x + l_width, l_vis?, .column_alignments[p_tab_count], .column_selectabilities[p_tab_count])
+	   _elif .row_headings? _andif (p_tab_count _is 0)
+	   _then
+		   >> (0, .row_headings_width, _true, .row_headings_alignment, _false)
+	   _else
+		   >> (0, 0, _false, :left, _false)
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.merged_tab_info(p_tab_count, _optional p_nr_columns_to_merge)
+	## Parameters    : P_TAB_COUNT: Lowest column index of columns
+	##                    that are merged
+	##                 [P_NR_COLUMNS_TO_MERGE]: The number of
+	##                    columns we want to merge.
+	## Returns       : 1) Left x-position for column nr P_TAB_COUNT
+	##                 2) Right x-position for column nr P_TAB_COUNT + P_NR_COLUMNS_TO_MERGE - 1
+	##                 3) Column visibility
+	##                 4) Column alignment
+	##                 5) Merged column selectability
+	##                 6) Index of the last column
+	## Function      : 
+	_self.int!check_initialised()
+	_local l_last_col << _if (p_nr_columns_to_merge _is _unset)
+			     _then >> .column_headings.size
+			     _else >> p_tab_count + p_nr_columns_to_merge - 1
+			     _endif
+	_local l_start_col << p_tab_count
+	_local l_found_first? << _false, l_x_min << 0, l_x_max << 0, l_vis? << _false, l_alignment << _false 
+	_for i_column_id _over _self.fast_indices()
+	_loop
+		_if l_found_first?
+		_then
+			_if (i_column_id > l_last_col)
+			_then
+				_leave 
+			_endif
+			# merge columns
+			_local (l_nx_min, l_nx_max, l_nvis?, l_nalignment, l_nselectable?) << _self.tab_info(i_column_id)
+			l_x_min << l_x_min.min(l_nx_min)
+			l_x_max << l_x_max.max(l_nx_max)
+			l_vis? << l_vis? _orif l_nvis?
+			l_selectable? << l_selectable? _orif l_nselectable?
+		_elif i_column_id.in_range?(l_start_col, l_last_col)
+		_then
+			l_found_first? << _true
+			l_start_col << i_column_id
+			(l_x_min, l_x_max, l_vis?, l_alignment, l_selectable?) << _self.tab_info(i_column_id)
+		_endif
+	_endloop
+	>> (l_x_min, l_x_max, l_vis?, l_alignment, l_selectable?, l_start_col, l_last_col)
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_private _method tree_headings_holder.int!check_initialised( _optional p_force_recalc? )
+	##
+	## Parameters    : [P_FORCE_RECALC?]: If _true (default is
+	##                 _false) then parameters are recalculated even if the cache
+	##                 is still ok.
+	## Returns       : 
+	## Function      : Check slots, discards those with wrong
+	##                 number of headings; and sets defaults for
+	##                 those unset. Self's representation as a
+	##                 styled_string gets discarded as well, so
+	##                 we get a fresh one next time.
+	## Methodology   :
+	
+	# check if we did this already
+	_if (.cached_tabs _isnt _unset) _andif (p_force_recalc? _isnt _true) _then _return _endif
+	.styled_string << _unset
+	_local l_max_cols << 1, l_column_widths
+	# check IDs and Headings
+	_if ((l_column_headings << .column_headings) _isnt _unset) _andif l_column_headings.empty? _then l_column_headings << _unset _endif
+	_if ((l_column_heading_ids << .column_heading_ids) _isnt _unset) _andif l_column_heading_ids.empty? _then l_column_heading_ids << _unset _endif
+	_if (l_column_headings _is _unset) _and (l_column_heading_ids _isnt _unset)
+	_then
+		l_column_headings << .column_headings << simple_vector.new(l_max_cols << l_column_heading_ids.size)
+		_for i_column_index, i_column_id _over l_column_heading_ids.fast_keys_and_elements()
+		_loop
+			l_column_headings[i_column_index] << .message_accessor.human_string(i_column_id, _unset, i_column_index)
+		_endloop
+	_elif (l_column_heading_ids _is _unset) _andif (l_column_headings _isnt _unset)
+	_then
+		l_column_heading_ids << .column_heading_ids << simple_vector.new(l_max_cols << l_column_headings.size)
+		_for i_column_id _over range(1, l_max_cols)
+		_loop
+			l_column_heading_ids[i_column_id] << i_column_id
+		_endloop
+	_elif (l_column_heading_ids _is _unset) _andif (l_column_headings _is _unset)
+	_then
+		# both are unknown; we will have only one column
+		l_column_heading_ids << .column_heading_ids << {1}
+		l_column_headings << .column_headings << {""}
+	_else
+		l_max_cols << l_column_heading_ids.size
+	_endif
+	# now check diverse fields
+	_if ((l_data << .col_resize_values) _is _unset) _orif (l_data.size <> l_max_cols)
+	_then
+		.col_resize_values << simple_vector.new(l_max_cols).fill_with(1)
+	_endif
+	l_column_orderings << _self.int!check_column_orderings(l_max_cols)
+	_if ((l_column_visibilities << .column_visibilities) _is _unset) _orif (l_column_visibilities.size <> l_max_cols)
+	_then
+		l_column_visibilities << .column_visibilities << simple_vector.new(l_max_cols).fill_with(_true)
+	_endif
+	_if ((l_data << .column_alignments) _is _unset) _orif (l_data.size <> l_max_cols)
+	_then
+		.column_alignments << simple_vector.new(l_max_cols).fill_with(:left)
+	_endif
+	_if ((l_data << .column_selectabilities) _is _unset) _orif (l_data.size <> l_max_cols)
+	_then
+		.column_selectabilities << simple_vector.new(l_max_cols).fill_with(_true)
+	_endif
+	_if ((l_data << .column_sort_selectors) _is _unset) _orif (l_data.size <> l_max_cols)
+	_then
+		_self.int!set_column_sort_selectors()
+	_endif
+	# check for old sort order...
+	_if ((l_sort_order << .sort_order) _is _unset)
+	_then
+		# do nothing
+	_elif l_sort_order.is_class_of?(simple_vector)
+	_then
+		# check if all the columns still exist
+	      _for i_sort_order _over l_sort_order.fast_elements()
+	      _loop
+		      _if (i_sort_order.abs > l_max_cols)
+		      _then
+			      .sort_order << _unset 
+		      _endif
+	      _endloop
+	_elif (l_sort_order.abs > l_max_cols)
+	_then
+		.sort_order << _unset 
+	_endif
+	# notify that the visiblity changed
+	_self.changed(:column_visibility?, _self.visible_columns)
+	_self.changed(:visible_column_order, _self.visible_column_order)
+	# set default minimums
+	_local _constant c_min_cell_w << _self.style_holder.min_cell_w
+	_if ((l_column_widths << .column_min_widths) _is _unset)
+	_then
+		# each column should be at least 12 pixels wide
+		.column_min_widths << rope.new(l_max_cols).fill_with(c_min_cell_w)
+	_else
+		_for i_index, i_min_width _over l_column_widths.fast_keys_and_elements()
+		_loop
+			l_column_widths[i_index] << c_min_cell_w.max(i_min_width)
+		_endloop
+	_endif 	
+	# compute optimal widths from data
+	_if (l_column_widths << .column_widths) _is _unset _orif
+	    l_column_widths.size _is 0
+	_then
+		# first we need to fetch the column widths (as a default, minimum is 1 column)
+		_local l_max_count << 100
+		_local l_tree_renderer << _self.tree_renderer
+		_local l_helper << _proc (p_tree_renderer)
+					   _import l_max_cols, l_column_widths
+					   _for i_width, i_col _over p_tree_renderer.optimal_column_widths()
+					   _loop
+						   l_column_widths[i_col] << l_column_widths[i_col].max(i_width)
+						   _if (i_col = l_max_cols) _then _leave _endif
+					   _endloop
+				   _endproc
+		l_column_widths << rope.new(l_max_cols).fill_with(0)
+		# compute initial widths from headings
+		l_tree_renderer.styled_string << _self.styled_string
+		l_helper(l_tree_renderer)
+		_for i_tree _over .tree_manager.fast_visible_trees()
+		_loop
+			l_tree_renderer.value_holder << i_tree
+			l_helper(l_tree_renderer)
+			# check if we have measured sufficient items
+			_if ((l_max_count -<< 1) = 0) _then _leave _endif
+		_endloop
+		.column_widths << l_column_widths.as_simple_vector()
+	_endif
+	# compute height
+	_local l_visible_rows << _self.styled_string.number_of_lines
+	_local l_new_height << _self.style_holder.default_row_height * (.visible_rows << l_visible_rows)
+	_if (l_new_height <> .height)
+	_then
+		_self.changed(:height, .height << l_new_height)
+	_endif
+	# compute width
+	_local l_cached_tabs << .cached_tabs << simple_vector.new(l_max_cols)
+	l_xpos << _self.row_headings_width
+	_for i_tab _over l_column_orderings.fast_elements()
+	_loop
+		l_cached_tabs[i_tab] << l_xpos
+		_local l_width << l_column_widths[i_tab]
+		# check if we do not have more columns than headings
+		_if l_column_visibilities[i_tab]
+		_then
+			l_xpos +<< l_width
+		_endif
+	_endloop
+	# notify that the width changed
+	_if ((.width << l_xpos) _isnt .int!old_width) _andif
+	    ((.int!old_width ^<< l_xpos) _isnt _unset)
+	_then
+		_self.changed(:width, l_xpos)
+	_endif
+	>> l_xpos
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.sort_order << p_new
+	## Parameters    : P_NEW: Denotes how we will be sorted:
+	##                  * _unset means we are not;
+	##                  * positive integer means we are sorted ascending on that column
+	##                  * negative integer means we are sorted decending on that column
+	##                  * possible in a future implementation we can sort on a
+	##                    simple_vector of those (multiple columns)
+	## Returns       : P_NEW
+	## Function      : Stores the new sort order (but does not
+	##                 trigger a sort action, which is done by the
+	##                 .sort() method); and decaches the
+	##                 styled_string. (The latter will be rebuild denoting we a
+	##                 sorted on some column)
+	.styled_string << _unset 
+	>> .sort_order << p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.toggle_sort_order?(p_column_id)
+	## Parameters    : P_COLUMN_ID: An index of a column.
+	## Returns       : The new sort-order
+	## Function      : If we are not sorted on P_COLUMN_ID, then we
+	##                 will set the sort order to be so;
+	##                 if we are already, we will change the sort
+	##                 order so we will be so in a descending way.
+	_if (.sort_order = p_column_id)
+	_then
+		p_column_id << -p_column_id
+	_endif
+	>> _self.sort_order << p_column_id
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.sort()
+	## Parameters    : -
+	## Returns       : -
+	## Function      : Carry out sorting on column as indentified
+	##                 by .sort_order; retrieves sort selector and
+	##                 checks if it should be descending.
+	## Methodology   : Takes grouping into account and uses tree_manager.sort_children()
+	# check if set correctly
+	_if ((l_column_index << .sort_order) _is _unset) _then _return _endif
+	_local l_sort_selector << _self.column_sort_selector(l_column_index.abs)
+	_local l_down? << l_column_index < 0
+	_try
+		_if (.group_order _is _unset)
+		_then
+			_self.tree_manager.sort_children(l_sort_selector, l_down?)
+		_else
+			_for i_child _over _self.tree_manager.fast_children()
+			_loop
+				i_child.sort_children(l_sort_selector, l_down?)
+			_endloop
+			_self.tree_manager.notify_changed()
+		_endif
+	_when ordered_collection_too_big
+	      _self.sort_order << _unset 
+	      _local l_control << _self.tree_renderer.canvas
+	      _local l_msg << .message_accessor.human_string(:too_many_items_to_sort, _unset, ordered_collection.max_records)
+	      sw_action.show_message(l_control, l_msg)
+	_endtry
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.number_of_columns
+	## Parameters    : -
+	## Returns       : The total number of columns, which may be more
+	##                 than the visible columns (which is a subset of the total).
+	## Function      : 
+	_self.int!check_initialised()
+	>> .column_headings.size
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.min_width << p_new
+	## Parameters    : P_NEW: Value to check the current width against.
+	## Returns       : P_NEW
+	## Function      : Check's if self's total width is less then
+	##                 P_NEW; if so, the column are enlarged to fit P_NEW.
+	# check if we have an initial width
+	_local l_dsw << .distribute_spare_width
+	_local l_extra << p_new - _self.width
+	_if (.col_resize_values _isnt _unset) _andif
+	    ((l_dsw _is :always) _orif (l_dsw _is :initial) _orif
+	     ((l_dsw _is :initial_extend) _andif (l_extra > 0)))
+	_then
+		_self.int!distribute_width_evenly(p_new, l_extra, .col_resize_values)
+	_endif
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.width
+	## Parameters    : -
+	## Returns       : Total width of visible column headings (possibly with
+	##                 row headings in front of them) in picels
+	## Function      : 
+	_self.int!check_initialised()
+	>> .width
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.column_headings?
+	## Parameters    : 
+	## Returns       : _true if we will show headings, (i.e. we
+	##                 have more than one row of headings), _false if we do not
+	##                 have them (i.e. we have zero headings rows)
+	## Function      : 
+	_self.int!check_initialised()
+	>> (.visible_rows > 0)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_headings_holder.row_heading(p_row_nr, _optional p_value_holder)
+	## Parameters    : P_ROW_NR: Index of a row
+	##                 [P_VALUE_HOLDER]: The current
+	##                    value-holder as used by the renderer;
+	##                    most of the times this will be a display_tree.
+	##                    It is compulsary to pass this argument if
+	##                    you make use of the (new)
+	##                    row_heading_selector property. 
+	## Returns       : String that should be used as a row_heading
+	##                 for P_ROW_NR; _unset if none is specified.
+	## Function      : This will retrieve a value to be used as a
+	##                 row header for row P_ROW_NR.
+	##                 If specified, .row_heading_selector will be
+	##                 used to retrieve that value, otherwise, it
+	##                 will check if .row_headings have been
+	##                 specified, and the default is to return P_ROW_NR.
+	>> _if ((l_row_heading_selector << .row_heading_selector) _isnt _unset)
+	   _then >> l_row_heading_selector(p_row_nr, p_value_holder, _self.style_holder)
+	   _elif (p_row_nr _is 0)
+	   _then >> _self.row_col_heading
+	   _elif ((l_row_headings << .row_headings) _isnt _unset)
+	   _then >> l_row_headings[p_row_nr]
+	   _else >> p_row_nr
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.row_heading(p_row_nr) << p_charvec
+	## Parameters    : P_ROW_NR: Index of a row
+	##                 P_CHARVEC: String that should be used for P_ROW_NR.
+	## Returns       : P_CHARVEC
+	## Function      : Set P_CHARVEC to be used as a row heading on
+	##                 the P_ROW_NR-th row.
+	## Note          : This is not the only way you can have
+	##                 something that looks like customised-row headings;
+	##                 e.g. you can also make the first column 'unselectable'.
+	##                 That way, the text in the row-headings can
+	##                 come from the styled string.
+	_if ((l_row_headings << .row_headings) _is _unset)
+	_then
+		l_row_headings << .row_headings << equality_hash_table.new()
+	_endif
+	>> l_row_headings[p_row_nr] << p_charvec
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_headings_holder.page_width(p_screen_width, p_screen_h_position)
+	## Parameters    : P_SCREEN_WIDTH: Total external screen width in pixels.
+	##                   (The internal width can be larger.)
+	##                 P_SCREEN_H_POSITION: Current horizontal
+	##                   position of left of external screen in internal screen.
+	## Returns       : Page size in pixels with what we can scroll
+	##                 horizontally to the left or right if the end-user click to
+	##                 the left or right of the thumbnail on the horizontal scrollbar.
+	## Function      : 
+	_local l_sought_column_x << p_screen_width + p_screen_h_position
+	_local l_min_width << p_screen_width, l_look_for_min << (p_screen_h_position > 0)
+	_self.int!check_initialised()
+	_for i_column_nr _over _self.fast_indices()
+	_loop
+		_local i_tab_x << .cached_tabs[i_column_nr]
+		_if (i_tab_x > p_screen_h_position) _andif l_look_for_min _andif (i_column_nr > 1)
+		_then
+			# we found the column at the left that is not displayed entirely
+			l_look_for_min << _false
+			l_min_width << .column_widths[i_column_nr - 1]
+		_endif
+		_if (i_tab_x > l_sought_column_x)
+		_then
+			# we found the column at the right that is not displayed entirely
+			_return l_min_width.min(.column_widths[i_column_nr])
+		_endif
+	_endloop
+	# return the best so far
+	>> l_min_width
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.row_headings_width
+	## Parameters    : 
+	## Returns       : If :row_headings? is _true, then the width
+	##                 that the rowheadings occupy is returned, otherwise 0.
+	## Function      : 
+	>> _if .row_headings? _then >> .row_headings_width _else >> 0 _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.row_headings_width << p_new
+	## Parameters    : P_NEW: The new width to be used for the row headings.
+	## Returns       : P_NEW
+	## Function      : Set's the new width for row_headings; if
+	##                 P_NEW is 0, then :row_headings? is set to 0, and the slot
+	##                 row_headings_width is left alone for future use; other the
+	##                 .row_headings_width is changed.
+	_if (p_new _is 0)
+	_then
+		.row_headings? << _false
+	_else 
+		.row_headings_width << p_new
+		.row_headings? << _true 
+	_endif
+	# forces redraw as well since the width changed
+	_self.int!check_initialised(_true)
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.row_headings? << p_new
+	## Parameters    : P_NEW: Boolean denoting whether row headings
+	##                    should be drawn.
+	## Returns       : P_NEW
+	## Function      : Set whether row headings should be drawn or
+	##                 not, and cause a .changed(:width) notification.
+	## Methodology   :
+	_if (.row_headings? _is p_new) _then _return _endif
+	.row_headings? << p_new
+	# forces redraw as well since the width changed
+	_self.int!check_initialised(_true)
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.row_headings_alignment << p_new
+	## Parameters    : P_NEW: :left, :centre, or :right (or :center)
+	## Returns       : P_NEW
+	## Function      : Set the alignment for the row headings
+	.row_headings_alignment << p_new
+	# do redraw
+	_self.tree_manager.changed(:height)
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.column_selectable?(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: Number of the column
+	## Returns       : _true if the end-user can select that column,
+	##                 _false if that is now allowed.
+	## Function      : An unselectable column has its cell
+	##                 displayed as panels. A selectable one looks
+	##                 normal (background colour) and can be drawn in highlight
+	##                 colour when selected (depending on display style etc.)
+	>> .column_selectabilities[p_column_index]
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.column_selectable?(p_column_index) << p_new?
+	## Parameters    : P_COLUMN_INDEX: Number of the column
+	##                 P_NEW?: _true if the end-user may select the
+	##                    column identified by P_COLUMN_INDEX,
+	##                    _false if that is now allowed.
+	## Returns       : P_NEW?
+	## Function      : An unselectable column has its cell
+	##                 displayed as panels. A selectable one looks
+	##                 normal (background colour) and can be drawn in highlight
+	##                 colour when selected (depending on display style etc.)
+	>> .column_selectabilities[p_column_index] << p_new?
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.column_heading(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: Number of the column.
+	##                    0 indicates the row/col heading.
+	## Returns       : String identifying P_COLUMN_INDEX-th column.
+	## Function      : 
+	_if (p_column_index _is 0)
+	_then
+		_return .row_col_heading
+	_endif
+	>> .column_headings[p_column_index]
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.column_heading(p_column_index) << p_new
+	## Parameters    : P_COLUMN_INDEX: Number of the column
+	##                    0 indicates the row/col heading.
+	##                 P_NEW: String identifying P_COLUMN_INDEX-th column.
+	##                    May be used for column headings and in popup menus.
+	## Returns       : P_NEW
+	## Function      : 
+	_if (p_column_index _is 0)
+	_then
+		_return .row_col_heading << p_new
+	_endif
+	>> .column_headings[p_column_index] << p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_iter _method tree_headings_holder.fast_headings_and_indices()
+	## Parameters    : -
+	## Returns       : Ordered iterations of
+	##                 1) column_heading
+	##                 2) index of column
+	## Function      : 
+	_local l_column_headings << .column_headings
+	_for i_column_index _over _self.fast_indices()
+	_loop
+		_loopbody (l_column_headings[i_column_index], i_column_index)
+	_endloop 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_iter _method tree_headings_holder.fast_indices(_optional l_incl_row_heading?)
+	## Parameters    : L_INCL_ROW_HEADING?: if _true (_false is
+	##                    default), then 0 is iterated as well
+	##                    (denoting the row headings' column)
+	## Returns       : Ordered iterations of column_headings
+	## Function      : 
+	_if l_incl_row_heading? _is _true _then _loopbody (0) _endif
+	_if ((l_column_orderings << .column_orderings) _is _unset)
+	_then
+		_return 
+	_endif
+	_for i_column_index _over l_column_orderings.fast_elements()
+	_loop
+		_loopbody (i_column_index)
+	_endloop 
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_iter _method tree_headings_holder.ordered_headings()
+	## Parameters    : 
+	## Returns       : Ordered iterations for visible columns of:
+	##                 1) Heading ids
+	##                 2) Heading texts
+	##                 3) Heading alignments (:left, :centre, :right)
+	##                 4) Formatters (if set for the heading id)
+	## Function      : 
+	_local l_column_visibilities << .column_visibilities	
+	_local l_column_heading_ids << .column_heading_ids
+	_local l_column_headings << .column_headings
+	_local l_column_alignments << .column_alignments
+	_local l_style_holder << _self.style_holder
+	_for i_column_index _over .column_orderings.fast_elements()
+	_loop
+		_if l_column_visibilities[i_column_index]
+		_then
+			_local l_heading_id << l_column_heading_ids[i_column_index]
+			_loopbody(l_heading_id, l_column_headings[i_column_index], l_column_alignments[i_column_index],
+				  l_style_holder.formatter(i_column_index))
+		_endif
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.styled_string
+	## Parameters    : 
+	## Returns       : A styled string that can be used to draw the
+	##                 column headings of the last row of headings.
+	## Function      : 
+	_if ((l_styled_string << .styled_string) _isnt _unset)
+	_then
+		_return l_styled_string
+	_endif
+	_if ((l_column_headings << .column_headings) _is _unset)
+	_then
+		_return styled_string.new()
+	_endif
+	_if ((l_styled_strings << .column_headings_styled_strings) _isnt _unset) _andif
+	    (l_column_headings.size <> l_styled_strings.size)
+	_then
+		l_styled_strings << .column_headings_styled_strings << _unset 
+	_endif
+	l_styled_string << rope.new_for(l_column_headings.size * 3)
+	_local l_first? << _true
+	l_styled_string.add(:button_text)
+	_for i_index _over range(1, l_column_headings.size)
+	_loop
+		_if l_first?
+		_then
+			l_first? << _false
+		_else
+			l_styled_string.add(:tab)
+		_endif
+		_if (l_styled_strings _isnt _unset) _andif
+		    ((l_heading << l_styled_strings[i_index]) _isnt _unset)
+		_then
+			l_styled_string.add_all_last(l_heading)
+		_else
+			l_styled_string.add(write_string(l_column_headings[i_index]))
+		_endif
+		_local (l_sorted?, l_asc?) << _self.sorted_on_column?(i_index)
+		_if l_sorted?
+		_then
+			l_styled_string.add(:image)
+			l_styled_string.add(_if l_asc? _then >> :sort_ascending _else >> :sort_descending _endif)
+		_endif
+	_endloop
+	>> .styled_string << styled_string.new_from(l_styled_string)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.sorted_on_column?(p_index)
+	## Parameters    : P_INDEX: Index of nth column.
+	## Returns       : 1) _true if sorted on P_INDEX,
+	##                    _false otherwise
+	##                 2) _true if that column is sorted ascending?,
+	##                    _false otherwise
+	## Function      : 
+	>> _if ((l_sort_order << .sort_order) _is _unset)
+	   _then >> (_false, _false) 
+	   _elif (l_sort_order = p_index)
+	   _then >> (_true, _true) 
+	   _elif (l_sort_order = -p_index)
+	   _then >> (_true, _false) 
+	   _elif l_sort_order.is_class_of?(simple_vector)
+	   _then >> _if ((l_sort_order << l_sort_order.an_element()) = p_index)
+		    _then >> (_true, _true) 
+		    _elif (l_sort_order = -p_index)
+		    _then >> (_true, _false)
+		    _else >> (_false, _false)
+		    _endif
+	   _else >> (_false, _false)
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.height
+	## Parameters    : 
+	## Returns       : Height in pixels occupied by self's headings.
+	## Function      : 
+	_self.int!check_initialised()
+	>> .height
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.column_sort_selector(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: Specifies the nth column
+	## Returns       : Specifies the sort-selector that will be
+	##                 used the P_COLUMN_INDEX-th column, when
+	##                 sorted with .tree_manager.sort_children()
+	## Function      : 
+	_if (p_column_index > 0) _andif ((l_column_sort_selectors << .column_sort_selectors) _isnt _unset)
+	_then
+		_return l_column_sort_selectors[p_column_index]
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.column_sort_selector(p_column_index) << p_new
+	## Parameters    : P_COLUMN_INDEX: Specifies the nth column
+	##                 P_NEW: Name of sorter (optional arguments
+	##                    may be included by putting all in a simple_vector),
+	##                    or a procedure that can be used for sorting.
+	## Returns       : P_NEW
+	## Function      : Specifies the sort-selector that will be
+	##                 used for .tree_manager.sort_children()
+	_if (p_column_index > 0) 
+	_then
+		.column_sort_selectors[p_column_index] << p_new 
+	_endif
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.column_allow_sort?(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: Specifies the nth column
+	## Returns       : _true if end-user can sort on this column,
+	##                 _false otherwise
+	## Function      : 
+
+	>> _self.column_headings? _andif (_self.number_of_columns > 0) _andif
+		(_self.column_sort_selector(p_column_index) _isnt _unset)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.column_allow_sort?(p_column_index) << p_new?
+	## Parameters    : P_COLUMN_INDEX: Specifies the nth column
+	##                 P_NEW?: _true if we want to enable the end
+	##                    user to sort on this column, _false
+	##                    otherwise. Note that an extra requirement will be the
+	##                    visibility of column headers (to click on).
+	## Returns       : P_NEW?
+	## Function      : Set the column_sort_selector for
+	##                 P_COLUMN_INDEX to _unset (P_NEW? is _false) or to
+	##                 {:display_tree, P_COLUMN_INDEX} (if (P_NEW? is _true)
+	_if (p_column_index > 0) 
+	_then
+		_if (.column_sort_selectors _is _unset)
+		_then
+			_if _not p_new? _then _return _false _endif
+			.column_allow_sort? << _true 
+			.column_sort_selectors << simple_vector.new(.column_heading_ids.size)
+		_endif
+		_self.column_sort_selector(p_column_index) << _if p_new? _then >> {:display_tree, p_column_index} _endif
+	_endif
+	>> p_new?
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.column_width(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: Specifies the nth column 
+	## Returns       : Width the P_COLUMN_INDEX-th column as it
+	##                 will be used for drawing.
+	## Function      : 
+	_if (p_column_index _is 0)
+	_then
+		_return _self.row_headings_width
+	_endif
+	>> _self.column_widths[p_column_index]
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_method tree_headings_holder.column_width(p_column_index) << p_new
+	## Parameters    : P_COLUMN_INDEX: Specifies the nth column
+	##                 P_NEW: The new width for the P_COLUMN_INDEX-th column
+	## Returns       : P_NEW
+	## Function      : Set's the width the P_COLUMN_INDEX-th column as it
+	##                 will be used for drawing. If the
+	##                 .distribute_spare_width is :always, then the rest width will
+	##                 be distributed over the remaining resizable columns.
+	_if (p_column_index _is 0)
+	_then
+		_return _self.row_headings_width << p_new
+	_endif
+	# check minimum (has been done already by styled_heading_renderer, but just in case)
+	_local l_min_cell_w << .column_min_widths[p_column_index] # _self.style_holder.min_cell_w
+	p_new << p_new.max(l_min_cell_w)
+	_local l_extra << .column_widths[p_column_index] - p_new
+	# set the new width
+	.column_widths[p_column_index] << p_new
+	_if (.distribute_spare_width _is :always)
+	_then
+		_local l_col_resize_values << .col_resize_values.copy()
+		# do not resize any columns prior to p_column_index
+		_for i_column_index _over _self.fast_indices()
+		_loop
+			l_col_resize_values[i_column_index] << 0
+			_if i_column_index = p_column_index _then _leave _endif
+		_endloop
+		# decache since we want to make sure new tabs are computed
+		.cached_tabs << _unset 
+		# we want to distribute the old_width + the ex;
+		_block
+			_dynamic !updating_trees?! << _true 
+			_self.int!distribute_width_evenly(.width, l_extra, l_col_resize_values)
+		_endblock
+		_self.changed(:width, .int!old_width)
+	_else
+		# effectuate
+		_self.int!check_initialised(_true)
+	_endif
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.column_visibility?(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: The column we want to its
+	##                    visibility of; 0 means whether we have
+	##                    row headings.
+	## Returns       : _true if P_COLUMN_INDEX-nth column is visible;
+	##                 _false otherwise.
+	## Function      : 
+	_if (p_column_index _is 0)
+	_then
+		# ToDo: Change this to .row_headings?
+		_return _self.row_headings_width
+	_elif (p_column_index > ((l_column_visibilities << .column_visibilities).size))
+	_then
+		# just checking, but it would be best if no user would do this
+		_return _false 
+	_endif
+	>> l_column_visibilities[p_column_index]
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.column_visibility?(p_column_index) << p_new
+	## Parameters    : P_COLUMN_INDEX: The column we want to set
+	##                    visibility for.
+	##                 P_NEW: _true if we to have this column
+	##                    displayed,_false if we want to hide it.
+	## Returns       : P_NEW
+	## Function      : Set P_COLUMN_INDEX-th column visibility to
+	##                 P_NEW and notify that visibility and order changed.
+	_if (p_column_index _is 0)
+	_then
+		_return _self.row_headings_width << p_new
+	_elif (.column_visibilities[p_column_index] = p_new)
+	_then
+		# nothing to change
+		_return p_new
+	_endif
+	.column_visibilities[p_column_index] << p_new
+	# check if we have to resize
+	_if (.distribute_spare_width _is :always)
+	_then
+		_local l_column_widths << .column_widths
+		_local l_column_visibilities << .column_visibilities
+		_local l_extra << .tree_renderer.available_width
+		_for i_column_nr _over _self.fast_indices()
+		_loop
+			_if l_column_visibilities[i_column_nr]
+			_then
+				l_extra -<< l_column_widths[i_column_nr]
+			_endif
+		_endloop
+		_self.int!distribute_width_evenly(.width, l_extra, .col_resize_values)
+		# notify the change
+		_self.int!check_initialised(_true)
+		_self.changed(:width, .int!old_width)
+	_else 
+		_self.int!check_initialised(_true)
+	_endif
+	_if p_new _is _false
+	_then
+		# If we've just hidden the column, ensure any filter value is
+		# cleared.
+		_self.tree_manager.clear_filter(p_column_index)
+	_endif
+	
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.visible_columns
+	## Parameters    : 
+	## Returns       : Simple_vector containing the IDs of all
+	##                 columns that are visible, in the order that
+	##                 they appear from left to right.
+	## Function      : 
+	_local l_visible_columns << _self.visible_column_order, l_column_heading_ids << .column_heading_ids
+	_if (l_column_heading_ids _is _unset) _then _return l_visible_columns _endif
+	_for i_index, i_column_index _over l_visible_columns.fast_keys_and_elements()
+	_loop
+		l_visible_columns[i_index] << l_column_heading_ids[i_column_index]
+	_endloop
+	>> l_visible_columns
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.visible_column_order
+	## Parameters    : 
+	## Returns       : Simple_vector containing the indices of all
+	##                 columns that are visible, in the order that
+	##                 they appear from left to right.
+	## Function      : 
+	_local l_visible_column_order << rope.new(), l_column_visibilities << .column_visibilities
+	_for i_column_index _over _self.fast_indices()
+	_loop
+		_if (l_column_visibilities _is _unset) _orif l_column_visibilities[i_column_index]
+		_then
+			l_visible_column_order.add(i_column_index)
+		_endif
+	_endloop
+	>> l_visible_column_order.as_simple_vector()
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.set_column_visibility?(p_column_index, p_new)
+	## Parameters    : P_COLUMN_INDEX: The column we want to set
+	##                    visibility for.
+	##                 P_NEW: _true if we to have this column
+	##                    displayed,_false if we want to hide it.
+	## Returns       : P_NEW
+	## Function      : Provide a convenience method for (menu)
+	##                 button items so they can call .column_visibility?() << .
+	>> _self.column_visibility?(p_column_index) << p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.first_visible_column?(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: Index of column.
+	## Returns       : _true if P_COLUMN_INDEX denotes the first
+	##                 visible column, _false otherwise.
+	## Function      : 
+	_local l_column_visibilities << .column_visibilities
+	_for i_column_index _over _self.fast_indices()
+	_loop
+		_if _not l_column_visibilities[i_column_index]
+		_then
+			# this column is invisible, skip
+		_elif (i_column_index = p_column_index) 
+		_then
+			_return _true
+		_else
+			# apparently, it is not visible yet
+			_return _false 
+		_endif
+	_endloop
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.first_visible_column
+	## Parameters    : 
+	## Returns       : The index of the first visible column.
+	## Function      : Takes into account the column_order.
+	_local l_column_visibilities << .column_visibilities
+	_for i_column_index _over _self.fast_indices()
+	_loop
+		_if l_column_visibilities[i_column_index]
+		_then
+			_return i_column_index
+		_endif
+	_endloop
+	>> 0
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.column_grouped_by?(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: Index of column. 0 if we
+	##                    want to test if no column is grouped.
+	##                    on; 0 if we want to ungroup.
+	## Returns       : _true if the display trees have been grouped on P_COLUMN_INDEX;
+	##                 _false otherwise.
+	## Function      : 
+	>> _if (p_column_index _is 0)
+	   _then >> (.group_order _is _unset)
+	   _else >> (p_column_index = .group_order)
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.column_grouped_by?(p_column_index) << p_new
+	## Parameters    : P_COLUMN_INDEX: The column we want to group
+	##                    on; 0 if we want to ungroup.
+	##                 P_NEW: _true if we want to group on
+	##                    P_COLUMN_INDEX; if _false then it is made
+	##                    sure we are *not* grouped on P_COLUMN_INDEX.
+	## Returns       : P_NEW
+	## Function      : Check's if we should (un)group on
+	##                 P_COLUMN_INDEX, and carries out necessary changes.
+	## Methodology   : Use .tree_manager.(un)group_children()
+	_if _not p_new
+	_then
+		_if (.group_order <> p_column_index)
+		_then
+			# we are already *not* grouped on p_column_index
+			_return _false
+		_else
+			# we want to ungroup
+			p_column_index << 0
+		_endif
+	_endif
+	_local l_tree_manager << _self.tree_manager
+	_local l_selection << l_tree_manager.selection
+	_if (p_column_index _is 0)
+	_then
+		# check if we were grouped before, so we have to ungroup
+		_if ((.group_order ^<< _unset) _isnt _unset)
+		_then
+			# check if we were sorted
+			_if (.sort_order _isnt _unset)
+			_then
+				_block
+					_dynamic !updating_trees?! << _true 
+					l_tree_manager.ungroup_children()
+				_endblock
+				_self.sort()
+			_else 
+				l_tree_manager.ungroup_children()
+			_endif
+			# check if we have to remove a handler that prevents grouping display trees to be selected.
+			l_selection.pre_select_notifier << l_selection.pre_select_notifier.remove(_self)
+		_endif
+	_else 
+		# set new group order, if there used to be one already, we have to ungroup
+		_local l_ungroup_first? << ((.group_order ^<< p_column_index) _isnt _unset)
+		_if _not (l_heading << _self.column_heading(p_column_index)).empty?
+		_then
+			l_heading +<< % + _self.style_holder.message(:column_grouping_equals, %=)
+		_endif
+		# let the tree_manager do the work
+		_if (.sort_order _isnt _unset) _andif
+		    (l_ungroup_first? _orif (l_tree_manager.external_grouper _isnt _unset))
+		_then
+			_block
+				_dynamic !updating_trees?! << _true
+				_if _not _self.int!group_children(p_column_index, l_heading, l_ungroup_first?)
+				_then
+					_return _true
+				_endif
+			_endblock
+			_self.sort()
+		_else 
+			_if _not _self.int!group_children(p_column_index, l_heading, l_ungroup_first?)
+			_then
+				_return _true
+			_endif
+		_endif
+		# check if we have to add a handler that prevents grouping display trees to be selected.
+		_if _not l_ungroup_first?
+		_then
+			l_selection.pre_select_notifier << handler.new_insert(l_selection.pre_select_notifier, _self, :|deselect_grouping_trees()|)
+		_endif
+	_endif
+	_self.changed(:column_grouped_by?)
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=debug, topic={tree_item})
+_method tree_headings_holder.set_column_grouped_by?(p_column_index, p_new)
+	## Parameters    : P_COLUMN_INDEX: The column we want to group
+	##                    on; 0 if we want to ungroup.
+	##                 P_NEW: _true if we want to group on
+	##                    P_COLUMN_INDEX; if _false then it is made
+	##                    sure we are *not* grouped on P_COLUMN_INDEX.
+	## Returns       : P_NEW
+	## Function      : Provide a convenience method for (menu)
+	##                 button items so they can call .column_grouped_by?() << .
+	>> _self.column_grouped_by?(p_column_index) << p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.optimal_column_width(p_column_nr)
+	## Parameters    : P_COLUMN_NR: An integer denoting the index
+	## Returns       : The optimal width to display the
+	##                 P_COLUMN_NR-th column for all visible display_trees.
+	## Function      : Check out the column-header and all visible
+	##                 display_trees for the width that they need
+	##                 for their P_COLUMN_NR-th column. The maximum
+	##                 is the optimum (after the cell_spacing_w has been added). 
+	_local l_tree_renderer << _self.tree_renderer
+	l_tree_renderer.styled_string << _self.styled_string
+	_local l_opt_width << l_tree_renderer.optimal_column_width(p_column_nr)
+	# ToDo: initialise on width of heading
+	_for i_tree _over _self.tree_manager.fast_visible_trees()
+	_loop
+		l_tree_renderer.value_holder << i_tree
+		l_opt_width << l_opt_width.max(l_tree_renderer.optimal_column_width(p_column_nr))
+	_endloop
+	# we do have the left offset, now add a right offset
+	>> l_opt_width + _self.style_holder.cell_spacing_w
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.change_column_order(p_column_id, p_new_position)
+	## Parameters    : P_COLUMN_ID: Either a column_heading_id or
+	##                    just an integer denoting the index
+	##                 P_NEW_POSITION: Index in the list of
+	##                    column_orderings where we want to move
+	##                    column P_COLUMN_ID to. 
+	## Returns       : _true if P_COLUMN_ID has been found and is moved,
+	##                 _false otherwise.
+	## Function      : Remove column P_COLUMN_ID from the 
+	##                 column_orderings, and re-insert it at P_NEW_POSITION-th position.
+	# check if this is an index or an id
+	p_column_id << .column_heading_ids.index_of(p_column_id).default(p_column_id)
+	_local l_column_orderings << rope.new_from(.column_orderings)
+	# check if the id exists (and remove it in one go)
+	_if _not l_column_orderings.remove(p_column_id)
+	_then
+		_return _false 
+	_endif
+	l_column_orderings.add_nth(p_column_id, p_new_position)
+	.column_orderings << l_column_orderings.as_simple_vector()
+	l_width << _self.int!check_initialised(_true)
+	# we know the width did not changed, but we want a refresh
+	_self.changed(:visible_column_order, _self.visible_column_order)
+	_self.changed(:width, l_width)
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.position_of(p_column_id)
+	## Parameters    : P_COLUMN_ID: Either a column_heading_id or
+	##                    just an integer denoting the index
+	## Returns       : The nth position where this column is
+	##                 currently listed.
+	## Function      : Check the column orderings for P_COLUMN_ID,
+	##                 the position returned is independent of
+	##                 which columns are visible at the moment.
+	p_column_id << .column_heading_ids.index_of(p_column_id).default(p_column_id)
+	>> .column_orderings.index_of(p_column_id)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.column_headings << p_new_value
+	## Parameters    : P_NEW_VALUE: simple_vector containing texts that
+	##                   identify the columns to the user; if not supplied, they will
+	##                   be derived using :column_heading_ids (and preferably :model's
+	##                   message_accessor)
+	## Returns       : P_NEW_VALUE
+	## Function      : 
+	.cached_tabs << _unset
+	>> .column_headings << p_new_value
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.column_heading_ids << p_new_value
+	## Parameters    : P_NEW_VALUE: simple_vector containing IDs to
+	##                   identify the columns with. If a model is known, they can
+	##                   be automatically translated into
+	##                   :column_headings. The translation happens
+	##                    only if column_headings are not known yet.
+	## Returns       : P_NEW_VALUE
+	## Function      : 
+	.cached_tabs << _unset
+	>> .column_heading_ids << p_new_value
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method tree_headings_holder.column_heading_id(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: Index denoting the nth
+	##                    column (nth being the nth position as
+	##                    they were specified with column_heading_ids)
+	## Returns       : ID for the P_COLUMN_INDEX-th column,
+	##                 defaults to P_COLUMN_INDEX if not specified.
+	## Function      : 
+	>> .column_heading_ids[p_column_index]
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method tree_headings_holder.column_headings_styled_strings << p_new_value
+	## Parameters    : P_NEW_VALUE: Vector of simple_vectors
+	##                   with contents that are acceptable to generate
+	##                   styled_strings of. These will be used as heading texts in
+	##                   the column headings. For four columns showing mail, an example could be:
+	##                   {{:image, :send_priority}, {:image, :read_status}, {"From"}, "Subject"}.
+	##                   Needs to have the same number of entries as there are columns.
+	## Returns       : P_NEW_VALUE
+	## Function      : 
+	.styled_string << _unset 
+	>> .column_headings_styled_strings << p_new_value
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.column_widths << p_new_value
+	## Parameters    : P_NEW_VALUE: Vector with widths for columns.
+	## Returns       : P_NEW_VALUE
+	## Function      : Set the new width for columns, such that
+	##                 they will be used the next time they are needed.
+	.cached_tabs << _unset
+	>> .column_widths << p_new_value
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.column_visibilities << p_new_value
+	## Parameters    : P_NEW_VALUE: Vector of booleans that denotes which
+	##                   columns will be drawn (visible) or hidden. Needs to have
+	##                   the same number of entries as there are columns.
+	## Returns       : P_NEW_VALUE
+	## Function      : 
+	.cached_tabs << _unset
+	>> .column_visibilities << p_new_value
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.column_allow_sort? << p_new?
+	## Parameters    : P_NEW?: if _true (default, unless
+	##                    :cell_selection? is _false, in which case it defaults to
+	##                    false), then the rows (display_trees) will be sorted when
+	##                    the user clicks on the column heading; if _false, then the
+	##                    user can select the column by doing this (if
+	##                    :cell_selection is :false, all will be selected.)
+	## Returns       : P_NEW?
+	## Function      : Sets whether clicking on the column will
+	##                 sort (P_NEW? is _true) or select (P_NEW? is _false)
+	.styled_string << _unset
+	.column_allow_sort? << p_new?
+	# make sure we have headings if we set the default sort selectors
+	_if (.column_headings _is _unset)
+	_then
+		_self.int!check_initialised()
+	_endif
+	_self.int!set_column_sort_selectors()
+	>> p_new?
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.column_alignments << p_new_value
+	## Parameters    : P_NEW_VALUE: Vector with alignment values
+	##                    for each column, each on of {:left, :right, :centre (or
+	##                    :center)}. Needs to have the same number of entries as there
+	##                    are columns. 
+	## Returns       : P_NEW_VALUE
+	## Function      : 
+	.cached_tabs << _unset
+	>> .column_alignments << p_new_value
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.column_selectabilities << p_new_value
+	## Parameters    : P_NEW_VALUE: Vector of booleans that denotes which
+	##                   columns have selectable cells. The default for each
+	##                   column is true, and if it is false it will be drawn in a
+	##                   special way (similar to a row headings). Needs to have
+	##                   the same number of entries as there are columns.
+	## Returns       : P_NEW_VALUE
+	## Function      : 
+	.cached_tabs << _unset
+	>> .column_selectabilities << p_new_value
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.columns?
+	## Parameters    : 
+	## Returns       : True if we have more than one column heading
+	## Function      : 
+	>> _self.column_headings? _andif (_self.number_of_columns > 1)
+_endmethod
+$
+
+$
+
+$
+
+_pragma(classify_level=restricted)
+_private _method tree_headings_holder.int!set_column_sort_selectors()
+	## Parameters    : 
+	## Returns       : 
+	## Function      : Set default .column_sort_selectors, based on
+	##                 the fact that display_trees are shown.
+	_if .column_allow_sort?
+	_then
+		l_data << .column_sort_selectors << simple_vector.new(l_max_cols << .column_headings.size)
+		_for i_column_id _over range(1, l_max_cols)
+		_loop
+			# see file sorted_collection_extras
+			l_data[i_column_id] << {:display_tree, i_column_id}
+		_endloop
+	_else
+		.column_sort_selectors << _unset 
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_private _method tree_headings_holder.int!distribute_width_evenly(p_total_width, p_rest_width, p_col_resize_values)
+	## Parameters    : P_TOTAL_WIDTH: The total width of the widget
+	##                 P_REST_WIDTH: The amount of horizontal space
+	##                    we have to distribute; if negative, columns will shrink.
+	##                 P_COL_RESIZE_VALUES: Specifies the
+	##                    proportions used for distributing P_REST_WIDTH to the
+	##                    columns. If the proportion for a certain column is 0, then
+	##                    it will not be resized. For the remaining columns, it is
+	##                    resized relative to the sum of proportions for the current
+	##                    visible columns.
+	## Returns       : _true if the P_REST_WIDTH has been
+	##                 distributed, _false if it has not (e.g. because
+	##                 P_COL_RESIZE_VALUES are all 0, or because P_REST_WIDTH is 0)
+	## Function      : Resizes the visible columns accoring to
+	##                    their proportion in P_COL_RESIZE_VALUES such that the total
+	##                    added width is P_REST_WIDTH.
+	##                 Note that if all proportions are zero, then
+	##                    nothing will happen.
+	##                 If there are any spare pixels from rounding
+	##                    up values, those will be added to the last visible resizable column.
+	_local l_column_visibilities << .column_visibilities
+	_local l_column_widths << .column_widths
+	_local l_min_widths << .column_min_widths
+	_local l_max_cols << l_column_widths.size
+	# we have a rest width to distribute
+	_local l_resize_sum << 0
+	_for i_column_nr _over _self.fast_indices()
+	_loop
+		_if l_column_visibilities[i_column_nr]
+		_then
+			l_resize_sum +<< p_col_resize_values[i_column_nr]
+		_endif
+	_endloop
+	# is there anything to resize?
+	_if (p_rest_width _is 0) _orif (l_resize_sum _is 0)
+	_then
+		_return _false 
+	_endif
+
+	_if (p_rest_width > 0)
+	_then
+		# if we've gained some space, try to ensure that all columns
+		# are visible first
+		_local l_width_sum << _self.row_headings_width
+		_for i_column_nr _over _self.fast_indices()
+		_loop
+			_if l_column_visibilities[i_column_nr]
+			_then
+				l_width_sum +<< l_column_widths[i_column_nr]
+			_endif
+		_endloop
+
+		# The old width is p_total_width - p_rest_width
+		_if (l_width_sum > (p_total_width - p_rest_width))
+		_then
+			p_rest_width -<< l_width_sum - (p_total_width - p_rest_width)
+			_if p_rest_width <= 0
+			_then
+				# No need to do any resizing
+				_return _true
+			_endif
+		_endif
+	_endif
+	
+	_local l_total_extra << p_rest_width / l_resize_sum
+	# distribute the resize values
+	_local l_last_column, l_min_cell_w # << _self.style_holder.min_cell_w
+	_for i_column_nr _over _self.fast_indices()
+	_loop
+		_if l_column_visibilities[i_column_nr]
+		_then
+			l_min_cell_w << l_min_widths[i_column_nr]
+			_local l_extra_width << (l_total_extra * p_col_resize_values[i_column_nr]).rounded
+			_local l_new_value << l_column_widths[i_column_nr] + l_extra_width
+			# columns have a minimum width of 12 pixels
+			_if (l_new_value < l_min_cell_w)
+			_then
+				l_extra_width << (l_new_value << l_min_cell_w) - l_column_widths[i_column_nr]
+			_endif
+			# set the new width
+			l_column_widths[i_column_nr] << l_new_value 
+			# compute what's left
+			p_rest_width -<< l_extra_width
+			# store last used column
+			l_last_column << i_column_nr
+		_endif
+	_finally
+		_if (l_last_column _isnt _unset)
+		_then
+			l_min_cell_w << l_min_widths[l_last_column]
+			# add the rest width that is a left over
+			_local l_new_value << l_column_widths[l_last_column] + p_rest_width
+			_if (l_new_value >= l_min_cell_w)
+			_then
+				l_column_widths[l_last_column] << l_new_value
+			_endif
+		_endif
+	_endloop
+	# make sure changes are picked up
+	_self.int!check_initialised(_true)
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.width << p_new
+	## Parameters    : P_NEW: A new width that is applied to self.
+	## Returns       : 
+	## Function      : Depending on the values of
+	##                 .distribute_spare_width (should be :always) and whether
+	##                 there are .col_resize_values (how columns should resize),
+	##                 the difference between self's current width and P_NEW is
+	##                 distributed over the resizable columns.
+	_local l_extra
+	_if .width _is _unset
+	_then
+		.width << p_new
+	_elif (l_extra << p_new - .width) _isnt 0
+	_then
+		_if (.distribute_spare_width _is :always) _andif (.col_resize_values _isnt _unset)
+		_then
+			_if _self.int!distribute_width_evenly(p_new, l_extra, .col_resize_values)
+			_then 
+				# the width should only be adapted *if* the total width of the
+				# columns has changed; since it is equal to the total width of
+				# all columns
+				.width << p_new
+			_endif 
+		_endif
+	_endif
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.column_widths
+	## Parameters    : 
+	## Returns       : Vector of widths for the columns as they
+	##                 will be used for drawing.
+	## Function      : 
+	_self.int!check_initialised()
+	>> .column_widths
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_headings_holder.deselect_grouping_trees(p_selection)
+	## Parameters    : P_SELECTION: A display_tree_selection.
+	## Returns       : 
+	## Function      : Walks over P_SELECTION and deselects all the
+	##                 display_trees whose function is to group other trees.
+	_if (.group_order _isnt _unset)
+	_then
+		_local l_tree_manager << .tree_manager
+		_for i_display_tree _over p_selection.elements()
+		_loop
+			# check if it is a top level tree, and thus a display tree used
+			# for grouping;
+			# alternatively we could use level, especially when we allow
+			# multilevel grouping
+			_if (i_display_tree.parent _is l_tree_manager)
+			_then
+				i_display_tree.selected? << _false 
+			_endif
+		_endloop
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_method tree_headings_holder.note_change(p_who, _optional p_what, p_value)
+	## Parameters    : P_WHO: Object that send out change notification
+	##                 [P_WHAT]: The aspect that changed
+	##                 [P_VALUE]: Optional new value for P_WHAT
+	## Returns       : 
+	## Function      : If P_WHAT is :height, re-calculate self's height;
+	##                 if P_WHAT is :data, check what we have to do
+	##                 with the sort order, on P_VALUE of :post_change
+	## Methodology   :
+	_if (p_what _is :height)
+	_then
+		# Make sure self's height get's recomputed
+		.cached_tabs << _unset 
+	_elif (p_what _is :data)
+	_then
+		_if .retain_sort_order?
+		_then
+			_if p_value _is :post_change
+			_then
+				.group_order << _unset
+				_self.sort()
+				_self.changed(:column_grouped_by?)			      
+			_endif 
+		_else
+			# remove current sort and group order
+			.group_order << _unset 
+			_self.sort_order << _unset
+			_self.changed(:column_grouped_by?)
+		_endif
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.searchable_column_id
+	## Parameters    : 
+	## Returns       : The index of the column we want to search in,
+	##                 if the user presses a key.
+	## Function      : Check if we have a sort order, if so, use
+	##                 the first column; otherwise takes into
+	##                 account the visible column_order.
+	>> _if ((l_sort_order << .sort_order) _is _unset)
+	   _then
+		   >> _self.first_visible_column
+	   _elif (simple_vector.is_class_of?(l_sort_order))
+	   _then
+		   >> l_sort_order.an_element().abs
+	   _else
+		   >> l_sort_order.abs
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_method tree_headings_holder.column_min_width(p_column_index) << p_new
+	## Parameters    : P_COLUMN_INDEX: Specifies the nth column
+	##                 P_NEW: The new minimal width for the P_COLUMN_INDEX-th column
+	## Returns       : P_NEW
+	## Function      : Set's the minimal width the
+	##                 P_COLUMN_INDEX-th column. If the current width is smaller,
+	##                 it will be changed to P_NEW by calling .column_width()<<
+	_if (p_column_index _is 0)
+	_then
+		_if (_self.row_headings_width < p_new)
+		_then
+			_self.row_headings_width << p_new
+		_endif
+		_return p_new
+	_endif
+	p_new << .column_min_widths[p_column_index] << p_new.max(_self.style_holder.min_cell_w)
+	_if (_self.column_width(p_column_index) < p_new)
+	_then
+		_self.column_width(p_column_index) << p_new
+	_endif
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.column_min_widths << p_new_value
+	## Parameters    : P_NEW_VALUE: Vector with minimal widths for columns.
+	## Returns       : P_NEW_VALUE
+	## Function      : Set the new minimal width for columns, such that
+	##                 they will be used the next time they are needed.
+	.cached_tabs << _unset
+	>> .column_min_widths << p_new_value
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_method tree_headings_holder.column_min_width(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: Specifies the nth column
+	## Returns       : The minimal width the P_COLUMN_INDEX-th column.
+	## Function      : 
+	_if (p_column_index _is 0)
+	_then
+		_return 0
+	_endif
+	>> .column_min_widths[p_column_index]
+_endmethod
+$
+
+$
+
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.column_orderings << p_new_value
+	## Parameters    : P_NEW_VALUE: Vector with column numbers
+	## Returns       : P_NEW_VALUE
+	## Function      : Set the ordering of the columns; The default
+	##                 value is {1, 2, ..., n} in case of n columns.
+	.cached_tabs << _unset
+	>> .column_orderings << p_new_value
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_headings_holder.column_orderings
+	## Parameters    : 
+	## Returns       : The ordering of the columns; The default
+	##                 value is {1, 2, ..., n} in case of n columns.
+	_self.int!check_initialised()
+	>> .column_orderings
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={external})
+_method tree_headings_holder.has_pick_list_for?(p_column_nr)
+	## Returns _true if a column_pick_list has been specfied for
+	## the column P_COLUMN_NR.
+	## Returns _false otherwise.
+	>> ((l_cpls << .column_pick_lists) _isnt _unset) _andif
+		(l_cpls[p_column_nr] _isnt _unset)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={external})
+_method tree_headings_holder.pick_list_for(p_column_nr)
+	## Returns the column pick list for P_COLUMN_NR, if one has
+	## been specified via the :column_pick_lists property. If the
+	## pick list was specified as a handler, then this handler will
+	## be invoked to obtain the items. 
+	## If no items are found, unset is returned.
+	## See sw_action for a specification of items (an item
+	## can be a {<value>, <string>}.
+	_if ((l_cpls << .column_pick_lists) _isnt _unset) _andif
+	    ((l_cpls << l_cpls[p_column_nr]) _isnt _unset) _andif
+	    handler.is_class_of?(l_cpls)
+	_then
+		l_cpls << l_cpls()
+	_endif
+	>> l_cpls
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_private _method tree_headings_holder.int!group_children(p_column_index, p_heading, p_ungroup_first?)
+	##
+	## Group the children by the column P_COLUMN_INDEX. P_HEADING
+	## is a string denoting the column heading or the item that has
+	## been grouped on. P_UNGROUP_FIRST?, if _true, indicates that
+	## the next first level of trees will be removed to do the
+	## 'ungrouping'.
+	## 
+
+	_try _with cond
+		_self.tree_manager.group_children(p_column_index, p_heading, _self.column_sort_selector(p_column_index), p_ungroup_first?)
+	_when too_many_items_to_group
+		.group_order << _unset
+		# Fix up the menu toggle items
+		_self.changed(:column_grouped_by?)
+		sw_action.show_message(_self.tree_renderer.canvas, cond.report_contents_string)
+		_return _false
+	_endtry
+	_return _true
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_private _method tree_headings_holder.int!check_column_orderings(l_max_cols)
+	## 
+	##
+	need_fix? << _false
+	_if ((l_column_orderings << .column_orderings) _is _unset) _orif (l_column_orderings.size <> l_max_cols)
+	_then
+		need_fix? << _true
+	_else
+		check << simple_vector.new(l_max_cols)
+		# ensure that all the specified columns are in range and that all
+		# are included in the list
+		index << 0
+		_for col _over l_column_orderings.fast_elements()
+		_loop
+			index +<< 1
+			_if  col < 1 _or l_max_cols < col
+			_then
+				need_fix? << _true
+				_leave
+			_endif
+			check[col] << _true
+		_endloop
+		_for col _over 1.upto(l_max_cols)
+		_loop
+			_if check[col] _isnt _true
+			_then
+				need_fix? << _true
+			_endif
+		_endloop
+	_endif
+	_if need_fix?
+	_then
+		l_column_orderings << .column_orderings << simple_vector.new(l_max_cols)
+		_for i_column_id _over range(1, l_max_cols)
+		_loop
+			l_column_orderings[i_column_id] << i_column_id
+		_endloop
+	_endif
+	>> l_column_orderings
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method tree_headings_holder.group_order << p_order
+	##
+	## Sets the group order if the grouping process was
+	## interrupted.
+	## P_ORDER is the index of the grouped column or unset if there
+	## is no grouping.
+
+	.group_order << p_order
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method tree_headings_holder.group_order
+	##
+	## Returns the index of the grouped column or unset if there
+	## is no grouping.
+	##
+
+	>> .group_order
+	
+_endmethod
+$
+

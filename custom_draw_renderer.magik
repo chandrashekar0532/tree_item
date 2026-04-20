@@ -1,0 +1,180 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+# Author         : GE Smallworld (Ken Korsmit)
+# Date           : Nov/2001
+#
+## Provides a place holder in a styled string
+## for custom drawn objects. It has a width, a height, and it
+## will create a render_notifier from the receiver and method
+## that are passed on creation. Everytime it needs redrawing,
+## it will invoke the latter.
+## By using custom_draw_renderer the need to subclass object to
+## have owner drawn objects is not longer required, and owner
+## drawing can easily be deferred to other places in code.
+def_slotted_exemplar(:custom_draw_renderer,
+{
+	{:width,           16},
+	{:height,          16},
+	{:render_notifier, _unset},
+	{:event_handler,   _unset}, # ToDo: not used yet
+	{:data,            _unset},
+	{:resize_x?,       _false}, # ToDo: not used yet
+	{:resize_y?,       _false}  # ToDo: not used yet
+})
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Width in pixels of _self inside a styled string.
+custom_draw_renderer.define_slot_access(:width, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Height in pixels of _self inside a styled string.
+custom_draw_renderer.define_slot_access(:height, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+## Slot that can be freely used by the api-user
+custom_draw_renderer.define_slot_access(:data, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_method custom_draw_renderer.new(p_width, p_height, p_receiver, p_method, _gather p_args)
+	## Parameters    : P_WIDTH: Width in pixels of _self inside a styled string.
+	##                 P_HEIGHT: Height in pixels of _self inside a styled string.
+	##                 P_RECEIVER: Object to send P_METHOD when
+	##                    self needs redrawing.
+	##                 P_METHOD: Method being send to P_RECEIVER when
+	##                    self needs redrawing.
+	##                 {P_ARGS}: Optional extra arguments to be
+	##                    used as the first for P_METHOD.
+	## Returns       : A new instance of this class.
+	## Function      : Create a new custom_draw_renderer that can
+	##                 defer drawing to P_RECEIVER.P_METHOD when necessary.
+	##                 P_WIDTH and P_HEIGHT are used to reserve an
+	##                 area inside the styled string for _self.
+	## Methodology   : When P_METHOD is called, besides P_ARGS the
+	##                 following arguments will be passed:
+	##                 P_CANVAS: A scrollable canvas (possibly a
+	##                    tree_item) on which rendering is needed.
+	##                 P_X: Left position where rendering should start.
+	##                 P_Y: Top position where rendering should start.
+	##                 P_CURRENT_TEXT_STYLE: The last used text
+	##                    style to render text.
+	##                 P_CUST_DRW_RNDR: _self
+	##                 P_DISPLAY_TREE: Display_tree that is rendered.
+	>> _clone.init(p_width, p_height, p_receiver, p_method, p_args)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_private _method custom_draw_renderer.init(p_width, p_height, p_receiver, p_method, p_args)
+	## Parameters    : P_WIDTH: Width in pixels of _self inside a styled string.
+	##                 P_HEIGHT: Height in pixels of _self inside a styled string.
+	##                 P_RECEIVER: Object to send P_METHOD when
+	##                    self needs redrawing.
+	##                 P_METHOD: Method being send to P_RECEIVER when
+	##                    self needs redrawing.
+	##                 P_ARGS: Optional extra arguments to be
+	##                    used as the first for P_METHOD.
+	## Returns       : Initialised self.
+	## Function      : 
+	## Methodology   : Subclass implementations need to call their super.
+	.width << p_width
+	.height << p_height
+	.render_notifier << handler.new(p_receiver.default(_self), p_method.default(:|render_default()|), _scatter p_args)
+	>> _self 
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method custom_draw_renderer.render(p_canvas, p_x, p_y, p_current_text_style, p_value_holder)
+	# Author         : GE Smallworld (Ken Korsmit)
+	# Date           : Nov/2001
+	#
+	## Parameters    : P_CANVAS: A scrollable canvas (possibly a
+	##                    tree_item) on which rendering is needed.
+	##                 P_X: Left position where rendering should start.
+	##                 P_Y: Top position where rendering should start.
+	##                 P_CURRENT_TEXT_STYLE: The last used text
+	##                    style to render text.
+	##                 P_VALUE_HOLDER: A display_tree or an other object
+	##                    that is being drawn by the renderer.
+	## Returns       : Result of invoking .render_notifier.
+	## Function      : Invoke .render_notifier to defer drawing;
+	##                 and pass on all the argument passed on to self;
+	##                 Note that _self is passed as the 6th argument.
+	## Methodology   : Clipping has been set to (P_X, P_Y, P_X +
+	##                 width, P_Y + height) by the styled_string_renderer.
+	>> .render_notifier(p_canvas, p_x, p_y, p_current_text_style, _self, p_value_holder)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_method custom_draw_renderer.render_default(p_canvas, p_x, p_y, p_current_text_style, p_custum_draw_renderer)
+	## Parameters    : P_CANVAS: A scrollable canvas (possibly a
+	##                    tree_item) on which rendering is needed.
+	##                 P_X: Left position where rendering should start.
+	##                 P_Y: Top position where rendering should start.
+	##                 P_CURRENT_TEXT_STYLE: The last used text
+	##                    style to render text.
+	##                 P_CUST_DRW_RNDR: _self
+	## Returns       : -
+	## Function      : Provide a convenience method to show self's
+	##                 area on P_CANVAS with a diagonal cross.
+	##                 A simple line style in foreground colour is used.
+	##                 This is the default if nothing is specified
+	##                 on creation.
+	_self.clear(p_canvas, p_x, p_y)
+	_self.render_outline(p_canvas, p_x, p_y)
+	# let's just draw a cross to denote we are there
+	_local l_line_style << string_styles_holder.foreground_line_style
+	_local l_right << p_x + .width
+	_local l_bottom << p_y + .height
+	p_canvas.draw_segment(l_line_style, p_x, p_y, l_right, l_bottom)
+	p_canvas.draw_segment(l_line_style, p_x, l_bottom, l_right, p_y)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method custom_draw_renderer.render_outline(p_canvas, p_x, p_y)
+	## Parameters    : P_CANVAS: A scrollable canvas (possibly a
+	##                    tree_item) on which rendering is needed.
+	##                 P_X: Left position where rendering should start.
+	##                 P_Y: Top position where rendering should start.
+	## Returns       : -
+	## Function      : Provide a convenience method to draw an
+	##                 outline around self's area on P_CANVAS.
+	##                 A simple line style in foreground colour is used.
+	_local l_line_style << string_styles_holder.foreground_line_style
+	_local l_outline << short_integer_vector.new_with(0,      0,
+							  .width, 0,
+							  .width, .height,
+							  0,      .height,
+							  0,      0)
+	p_canvas.draw_rline(l_line_style, p_x,  p_y, l_outline)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method custom_draw_renderer.clear(p_canvas, p_x, p_y)
+	## Parameters    : P_CANVAS: A scrollable canvas (possibly a
+	##                    tree_item) on which clearing is needed.
+	##                 P_X: Left position where clearing should start.
+	##                 P_Y: Top position where clearing should start.
+	## Returns       : -
+	## Function      : Provide a convenience method to clear self's
+	##                 area on P_CANVAS.
+	_local l_right << p_x + .width
+	_local l_bottom << p_y + .height
+	p_canvas.clear_area(p_x, p_y, l_right, l_bottom)
+_endmethod
+$
+

@@ -1,0 +1,19 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=restricted, topic={tree,tree_item}, usage={subclassable})
+_method tree.as_display_tree()
+	## Parameters    : 
+	## Returns       : A display tree
+	## Function      : Converts self to a display tree, and allow
+	##                 self's children to be converted lazily as well;
+	##                 .key and .value are retained.
+	>> display_tree.new(.key, .value, _unset, _self.children, :|as_display_tree()|)
+_endmethod
+$
+

@@ -1,0 +1,3340 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+## For use with a tree_item.
+## It has a whole range of notifiers the api-user can hook into.
+## It implements default implementations for some of these, and
+## the api-user can also concatenate to those using the handler
+## mechanism. 
+## It will process damage, mouse and keyboard events and invokes
+## appropriate notifiers.
+def_slotted_exemplar(:tree_agent,
+{
+	{:tree_manager,    _unset},
+	{:int!override_handler, _unset},
+	{:int!override_data, _unset},
+	{:int!cached_width, _unset},
+	{:int!cached_height, _unset},
+	{:int!drag_to_agents, _unset},
+	{:drag_sources, _unset},
+	{:drag_notifier, _unset},
+	{:allow_dragging_notifier, _unset},
+	{:release_dragging_notifier, _unset},
+	{:allow_source_dragging_notifier, _unset},
+	{:release_source_dragging_notifier, _unset},
+	{:middle_mouse_notifier, _unset},
+	{:double_click_notifier, _unset},
+	{:right_click_notifier, _unset},
+	{:key_pressed_notifier, _unset},
+	{:enter_pressed_notifier, _unset},
+	{:expand_notifier, _unset},
+	{:text_click_notifier, _unset},
+	{:text_release_click_notifier, _unset},
+	{:hypertext_click_notifier, _unset},
+	{:toggle_notifier, _unset},
+	{:radio_toggle_notifier, _unset},
+	{:value_click_notifier, _unset},
+	{:image_click_notifier, _unset},
+	{:custom_draw_click_notifier, _unset},
+	{:column_click_notifier, _unset},
+	{:column_drag_notifier, _unset},
+	{:column_resize_notifier, _unset},
+	{:click_notifier, _unset},
+	{:pre_sort_notifier, _unset},
+	{:sort_notifier, _unset},
+	{:column_order_changed_notifier, _unset},
+	{:formatter_changed_notifier, _unset},
+	{:release_click_notifier, _unset},
+	{:value_release_click_notifier, _unset},
+	{:editor_required_notifier, _unset},
+	{:editors, _unset},
+	{:edit_manager, _unset},
+	{:last_edited_value, _unset},
+	{:edit_start_notifier, _unset},
+	{:edit_stop_notifier, _unset},
+	{:edit_on_click?, _true},
+	{:edit_always_on?, _false},
+	{:value_changed_notifier, _unset},
+	{:column_chooser, _unset},
+	{:column_save_settings_notifier, _unset},
+	{:int!inline_editor_data, _unset}
+},
+:agent)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Provides access to the tree_items (self's window) tree_manager
+tree_agent.define_slot_access(:tree_manager, :readable)
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+## Either a handler or _unset. If specified, the
+## .default_handle_event() is not called anymore.
+## If is passed two arguments:
+##  * P_EVENT: The event that needs processing;
+##  * P_AGENT: _self, the agent that does the default processing.
+## Should return multiple results:
+##  * HANDLED?: If _true, then the event is considered
+##    processed, else, ACTION is checked.
+##  * ACTION: Symbol that is mapped by the .notifier_for_action
+##    table to a notifier name. If defined, then the notifier
+##    is invoked.
+##  * DATA: Arguments that are gathered and scattered again to
+##    the invoked notifier. 
+tree_agent.define_slot_access(:int!override_handler, :writable)
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+## Optional data for .int!override_handler; format may be
+## specific to each .int!override_handler.
+tree_agent.define_slot_access(:int!override_data, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+## The drag_notifier is called when the end-user causes
+## drag-events and is passed P_TREE, P_ROW_INDEX, P_EVENT.
+## Here P_TREE is the display_tree that is under the x.y from
+## P_EVENT; P_ROW_INDEX is the index of 'row' at which P_TREE
+## is currectly displayed.
+## 
+## By default the drag_notifier is set to
+## _self.notify_default_select_dragging(), which result is the
+## selection being extended (when the user drags the mouse).
+##
+## If you set either
+## *  :simple_dragging? (see below)
+## *  :same_parent_dragging? (see below)
+## *  :allow_dragging_notifier
+## then the drag_notifier is defaults to
+## _self.notify_default_dragging(). This will take care of the
+## most needed drag function by calling to other notifiers:
+## *  :allow_dragging_notifier(), to check if the current drag
+##    operation may be completed (see its own definition)
+## *  :release_dragging_notifier(), to carry out the completed
+##    drag operation (see its own definition)
+##
+## If :simple_dragging? is set to _true, then the
+## :allow_dragging_notifier is set to _self.allow_simple_dragging?(),
+## which basically allows the dragging if the tree dragged on
+## is not part of the selection that is being dragged.
+## The :release_dragging_notifier will be set to
+## _self.notify_release_dragging() which just carries out the
+## re-positioning (detachment and attachment) of the selected trees.
+##
+## If :same_parent_dragging? is set to _true, then the
+## :allow_dragging_notifier is set to _self.allow_same_parent_dragging?(), 
+## which refines the constraint of _self.allow_simple_dragging?() 
+## in the way that the tree to which the selection is being
+## drawn on, should have the same parent as all the tree is the selection.
+tree_agent.define_slot_access(:drag_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user is dragging one (set of) display
+## trees onto another one. This should return
+## _true if dragging is fine, and _false if it is not allowed.
+## When invoked, the handler gets passed the following arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_COL_INDEX: Index in the list of columns.
+## P_SELECTION: Display tree selection which is
+##    the current set of selected trees, i.e. the ones that are
+##    being dragged onto P_TREE.
+## P_EVENT: Event that has been raised.
+## P_DEFAULT_MOUSE: Depending on modmask of P_EVENT:
+##    When just Ctrl or Shft are pressed, :copy is the default;
+##    For Alt or combinations, this is :link; and
+##    With no modifier, this defaults to :move.
+## [P_FIRST_TIME?]: _true if this is the first
+##    time the dragging notifier is called for
+##    this drag operation. (This allows to setup caches).
+## The allow-drag notifier should return:
+##    1) _true if P_TREE is a valid destination,
+##       _false otherwise
+##    2) Optionally a new P_DEFAULT_MOUSE.
+tree_agent.define_slot_access(:allow_dragging_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user has dragged one (set of) display
+## trees onto another one, and the 
+## :allow_dragging_notifier has approved of this. 
+## When invoked, the handler gets passed the following arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_COL_INDEX: Index in the list of columns.
+## P_SELECTION: Display tree selection which is
+##    the current set of selected trees, i.e. the ones that are
+##    being dragged onto P_TREE.
+## P_EVENT: Event that has been raised.
+## P_DEFAULT_MOUSE: Depending on modmask of P_EVENT:
+##    When just Ctrl or Shft are pressed, :copy is the default;
+##    For Alt or combinations, this is :link; and
+##    With no modifier, this defaults to :move.
+## [P_FIRST_TIME?]: _true if this is the first
+##    time the dragging notifier is called for
+##    this drag operation. (This allows to setup caches).
+## The allow-drag notifier should return:
+##    1) _true if P_TREE is a valid destination,
+##       _false otherwise
+##    2) Optionally a new P_DEFAULT_MOUSE.
+tree_agent.define_slot_access(:release_dragging_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user uses the middle mouse button.
+## When invoked, the handler gets passed three arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised.
+## Methodology   : Works only if win32_window_system.mouse_buttons = 3
+tree_agent.define_slot_access(:middle_mouse_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user has performed a double click.
+## (It actually gets carried out on the double_release)
+## When invoked, the handler gets passed four arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised.
+## P_SELECTION: Display tree selection which is
+##    the current set of selected trees, i.e. the ones that are
+##    being dragged onto P_TREE.
+tree_agent.define_slot_access(:double_click_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user presses the right mouse button.
+## The method does not need to pop up a popup
+## menu, that is done automatically, however
+## this method will be called BEFORE the menu
+## is popped up. This allows the programmer to
+## configure the popup to reflect the currently
+## selected object etc. 
+## When invoked, the handler gets passed five arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last ohandler.new(p_receiver, p_method, _scatter p_args)ne)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised. Can be unset
+##    (the first time, when the menu is set)
+## P_IN_COL_HEADINGS?: _true if we are in the
+##    column headings, _false if we are not.
+## P_MENU: The menu that will be raised by
+##    default. This will be the headings popup menu
+##    if P_IN_COL_HEADINGS? is _true, and the normal poup otherwise.
+tree_agent.define_slot_access(:right_click_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the user
+## presses a key; defaults to .default_handle_keypress().
+## When invoked, the handler gets passed one argument:
+## P_KEYB_EVENT: An input event of category :keyboard.
+## It should return _true if P_KEYB_EVENT is
+## handled, _false otherwise 
+tree_agent.define_slot_access(:key_pressed_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user has pressed the enter key.
+## When invoked, the handler gets passed four arguments:
+## P_TREE: The first display_tree in the selection or unset if
+##    the selection is empty. 
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised.
+## P_SELECTION: Display tree selection which is
+##    the current set of selected trees, i.e. the ones that are
+##    being dragged onto P_TREE.
+tree_agent.define_slot_access(:enter_pressed_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the end-user expands or
+## collapses a display tree (either by clicking on the '+' or
+## '-' on the gui or by using the plus,  minus, right arrow or
+## left arrow keyboard keys).
+## When invoked, the handler gets passed three arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised.
+## The handler must perform the expansion/compression itself.
+## This is most easily achieved by sending
+## default_handle_expand() to the tree_item's agent.
+## The handler returns _true or false to indicate whether the
+## event has been handled.
+tree_agent.define_slot_access(:expand_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=restricted, usage={external})
+## A handler that is called when the
+## end-user clicks on an image (or
+## any other object that has been converted to one)
+## inside the styled string.
+## When invoked, the handler gets passed seven arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised
+## P_VALUE: _unset, or the :index in the
+##    display_trees value if the text comes from a :value mark
+## P_TEXT_STYLE: Which is always :resolved_image
+## P_IMAGE: The image as it has been resolved
+## P_DX, P_DY: Relative position in P_IMAGE
+##    (compared to P_TEXT top left being (0,0)
+tree_agent.define_slot_access(:image_click_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user clicks in a text string (or
+## any other object that has been converted to one)
+## inside the styled string.
+## When invoked, the handler gets passed seven arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised
+## P_VALUE: _unset, or the :index in the
+##    display_trees value if the text comes from a :value mark
+## P_TEXT_STYLE: Text style with what
+##    P_TEXT has been drawn.
+## P_TEXT: The text as it is in the parsed styled string
+## P_DX, P_DY: Relative position in P_TEXT
+##    (compared to P_TEXT top left being (0,0)
+tree_agent.define_slot_access(:text_click_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user clicks on any object inside the
+## styled string that has been fetched by the
+## :value function. 
+## When invoked, the handler gets passed seven arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised
+## P_VALUE: _unset, or the :index in the
+##    display_trees value if the text comes from a :value mark
+## P_TEXT_STYLE: Which is always :resolved_image
+## P_IMAGE: The image as it has been resolved
+## P_DX, P_DY: Relative position in P_IMAGE
+##    (compared to P_TEXT top left being (0,0)
+tree_agent.define_slot_access(:value_click_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user clicks on an image (or
+## any other object that has been converted to one)
+## inside the styled string.
+## This image is used such that the user can
+## *toggle* it.
+## When invoked, the handler gets passed seven arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised
+## P_VALUE: _unset, or the :index in the
+##    display_trees value if the text comes from a :value mark
+## P_TEXT_STYLE: Which is always :resolved_image
+## P_IMAGE: The image as it has been resolved
+## P_DX, P_DY: Relative position in P_IMAGE
+##    (compared to P_TEXT top left being (0,0)
+tree_agent.define_slot_access(:toggle_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user clicks on an image (or
+## any other object that has been converted to one)
+## inside the styled string.
+## This image is used such that the user can
+## *radio_toggle* it.
+## When invoked, the handler gets passed seven arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised
+## P_VALUE: _unset, or the :index in the
+##    display_trees value if the text comes from a :value mark
+## P_TEXT_STYLE: Which is always :resolved_image
+## P_IMAGE: The image as it has been resolved
+## P_DX, P_DY: Relative position in P_IMAGE
+##    (compared to P_TEXT top left being (0,0)
+tree_agent.define_slot_access(:radio_toggle_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user clicks in a text string (or
+## any other object that has been converted to one)
+## inside the styled string. The text style for
+## this text has been marked as a 'hypertext'
+## style (default for underlined texts).
+## When invoked, the handler gets passed seven arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised
+## P_VALUE: _unset, or the :index in the
+##    display_trees value if the text comes from a :value mark
+## P_TEXT_STYLE: Text style with what
+##    P_TEXT has been drawn.
+## P_TEXT: The text as it is in the parsed styled string
+## P_DX, P_DY: Relative position in P_TEXT
+##    (compared to P_TEXT top left being (0,0)
+tree_agent.define_slot_access(:hypertext_click_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the user
+## presses click on a display tree but not on
+## an element in it; defaults to .handle_click().
+## When invoked, the handler gets passed three arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised.
+tree_agent.define_slot_access(:click_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the user
+## clicks on a column heading; defaults to .handle_column_click().
+## When invoked, the handler gets passed two arguments:
+## P_EVENT: Event that has been raised.
+## P_COLUMN_INDEX: Column the event is in.
+tree_agent.define_slot_access(:column_click_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the user
+## clicks between two column headings, thus
+## resizing the left most one; defaults to .handle_column_resize().
+## When invoked, the handler gets passed three arguments:
+## P_EVENT: Event that has been raised.
+## P_COLUMN_INDEX: Column the event is in.
+## P_NEW_WIDTH: The new width as the user has
+##    resized the left most column to.
+tree_agent.define_slot_access(:column_resize_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user sort a column. If this method
+## returns _true, it is assumed that it has
+## carried out the sorting (and this is not
+## done anymore by the standard code). Otherwise,
+## the trees are sorted and the :sort_notifier
+## is invoked.
+## When invoked, the handler gets passed two arguments:
+## P_COLUMN_INDEX: Index of column that
+##    end-user wants to sort on.
+## P_WINDOW: The tree_item (also canvas).
+tree_agent.define_slot_access(:pre_sort_notifier, :readable)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when we have
+## just sorted on a column.
+## When invoked, the handler gets passed two arguments:
+## P_COLUMN_INDEX: Index of column that
+##    end-user wants to sort on.
+## P_WINDOW: The tree_item (also canvas).
+tree_agent.define_slot_access(:sort_notifier, :readable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+## Notifier that is called when the end-user has reordered the columns.
+## As an argument, the new column order is passed. If the
+## api-user has name the columns, a simple_vector with those
+## names in the right order is returned. Otherwise, a
+## simple_vector with the original column numbers is returned
+## (original meaning the one that used to be first is called
+## 1), etc.
+tree_agent.define_slot_access(:column_order_changed_notifier, :readable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+## Notifier that is called when a different formatter is set
+## by the end-user. Parameters passed are: FORMATTER and COLUMN_ID
+tree_agent.define_slot_access(:formatter_changed_notifier, :readable)
+$
+
+_pragma(classify_level=advanced)
+## A handler that is called when the user
+## releases the left mouse button on a display tree but
+## not on an element in it.
+## When invoked, the handler gets passed three arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised.
+tree_agent.define_slot_access(:release_click_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user releases the click on any object inside the
+## styled string that has been fetched by the
+## :value function. 
+## When invoked, the handler gets passed seven arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised
+## P_VALUE: _unset, or the :index in the
+##    display_trees value if the text comes from a :value mark
+## P_TEXT_STYLE: Which is always :resolved_image
+## P_IMAGE: The image as it has been resolved
+## P_DX, P_DY: Relative position in P_IMAGE
+##    (compared to P_TEXT top left being (0,0)
+tree_agent.define_slot_access(:value_release_click_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user releases the click on any object inside the
+## styled string that has been fetched by the
+## :value function. 
+## When invoked, the handler gets passed seven arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised
+## P_VALUE: _unset, or the :index in the
+##    display_trees value if the text comes from a :value mark
+## P_TEXT_STYLE: Which is always :resolved_image
+## P_IMAGE: The image as it has been resolved
+## P_DX, P_DY: Relative position in P_IMAGE
+##    (compared to P_TEXT top left being (0,0)
+tree_agent.define_slot_access(:text_release_click_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=restricted, usage={external})
+## A handler that is called when the
+## end-user clicks on an custom_draw_renderer
+## inside the styled string.
+## When invoked, the handler gets passed seven arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_EVENT: Event that has been raised
+## P_VALUE: _unset, or the :index in the
+##    display_trees value if the text comes from a :value mark
+## P_TEXT_STYLE: Which is always :resolved_image
+## P_IMAGE: The image as it has been resolved
+## P_DX, P_DY: Relative position in P_IMAGE
+##    (compared to P_TEXT top left being (0,0)
+tree_agent.define_slot_access(:custom_draw_click_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user has changed a value in an in-place editor and this
+## is about to be set to the value-holder (display_tree).
+## When invoked, the handler gets passed five arguments:
+## P_TREE: Display tree whose value is changed
+## P_VALUE_ID: Id following :value in the styled string,
+##    identifying the value that we want to edit.
+## P_NEW_VALUE: The new value that we are about to set.
+## P_UNDO_VALUE: Value that used to be there at the start of
+##    this edit action.
+## P_EDITOR: The editor that made the change
+tree_agent.define_slot_access(:value_changed_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user starts editing a value, just before the edit
+## controls are shown.
+## When invoked, the handler gets passed five arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_VALUE_ID: Id following :value in the styled string,
+##    identifying the value that we want to edit.
+## P_EDITOR: The editor that will be used.
+## P_EDIT_MANAGER: The manager that takes care of the resources.
+tree_agent.define_slot_access(:edit_start_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## A handler that is called when the
+## end-user stops editing a value, just after the edit
+## controls are hidden.
+## (There may be a programmatic cause to this).
+## When invoked, the handler gets passed five arguments:
+## P_TREE: Display tree that has been clicked on (unset
+##    if it is in the column headings or below
+##    the last one)
+## P_ROW_INDEX: Index in the list of visible
+##    display trees.
+## P_VALUE_ID: Id following :value in the styled string,
+##    identifying the value that we want to edit.
+## P_EDITOR: The editor that will be used.
+## P_EDIT_MANAGER: The manager that takes care of the resources.
+tree_agent.define_slot_access(:edit_stop_notifier, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## If _true (default), then as soon as the end-user clicks into
+## an editable value, the editor will be shown and gets
+## focus. If this option is _false, editing becomes more
+## compatible with the OS explorer and starts only if the item
+## clicked in has been selected already.
+tree_agent.define_slot_access(:edit_on_click?, :writable, :readonly)
+$
+
+_pragma(classify_level=advanced, usage={external})
+## If true, than when there is a selection, and this selection
+## contains an editable value, this will be in-place-edited immediately.
+## Focus will be retained by the canvas, or given to the in-place-editor
+## if the end-user clicked on the editable value.
+## If false, editing only starts when the end-user clicks in
+## the corresponding cell, or on the editable value, or presses F2.
+tree_agent.define_slot_access(:edit_always_on?, :readable)
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+## List of notifiers that the api-user can supply. See comments
+## for individual notifiers. This is used internally by
+## exported_properties.
+tree_agent.define_shared_constant(:exported_notifiers,
+	set.new_with(
+		:drag_notifier,
+		:allow_dragging_notifier, 
+		:release_dragging_notifier, 
+		:middle_mouse_notifier,
+		:double_click_notifier,
+		:key_pressed_notifier,
+		:enter_pressed_notifier,
+		:right_click_notifier,
+		:expand_notifier,
+		:image_click_notifier,
+		:text_click_notifier,
+		:text_release_click_notifier,
+		:hypertext_click_notifier,
+		:toggle_notifier,
+		:radio_toggle_notifier,
+		:editor_required_notifier,
+		:edit_start_notifier,
+		:edit_stop_notifier,
+		:release_click_notifier,
+		:value_click_notifier,
+		:value_release_click_notifier,
+		:value_changed_notifier,
+		:click_notifier,
+		:column_click_notifier, 
+		:column_resize_notifier,
+		:pre_sort_notifier,
+		:sort_notifier,
+		:custom_draw_click_notifier,
+		:column_order_changed_notifier,
+		:formatter_changed_notifier),
+	:private)
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+## Maps actions (as returned by the .int!override_handler) onto notifiers.
+tree_agent.define_shared_constant(:notifier_for_action,
+	property_list.new_with(
+		:expand,             :expand_notifier,
+		:image,              :image_click_notifier,
+		:text,               :text_click_notifier,
+		:hypertext,          :hypertext_click_notifier,
+		:toggle,             :toggle_notifier,
+		:radio_toggle,       :radio_toggle_notifier,
+		:value,              :value_click_notifier,
+		:custom_draw,        :custom_draw_click_notifier,
+		:click,              :click_notifier,
+		:value_release,      :value_release_click_notifier,
+		:click_release,      :release_click_notifier,
+		:text_release,       :text_release_click_notifier,
+		:image_release,      :release_click_notifier,
+		:column_click,       :column_click_notifier, 
+		:column_resize,      :column_resize_notifier,
+		:column_drag,        :column_drag_notifier),
+	:private) 
+$
+
+_pragma(classify_level=advanced)
+_method tree_agent.new(p_new_model, p_window, p_properties)
+	## Create and return a new copy of _self which will be made a
+	## dependant of P_MODEL and P_LIST_CONTROL.
+	>> _clone.init(p_new_model, p_window, p_properties)
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_private _method tree_agent.init(p_new_model, p_window, p_properties)
+	## Initialise _self. This must be called by subclasses.
+	_super.init(p_new_model)
+	.window << p_window
+	.tree_manager << p_window.tree_manager
+	.int!inline_editor_data << property_list.new()
+	# set default toggle handlers
+	.radio_toggle_notifier << handler.new(_self, :handle_radio_toggle|()|)
+	.toggle_notifier << handler.new(_self, :handle_toggle|()|)
+	.image_click_notifier << 
+	.text_click_notifier << 
+	.hypertext_click_notifier << 
+	.value_click_notifier <<
+	.custom_draw_click_notifier << 
+	.click_notifier << handler.new(_self, :handle_click|()|)
+	.column_click_notifier << handler.new(_self, :handle_column_click|()|)
+	.column_resize_notifier << handler.new(_self, :handle_column_resize|()|)
+	.expand_notifier << handler.new(_self, :default_handle_expand|()|)
+	_self.text_release_click_notifier << handler.new(_self, :handle_text_release_click|()|)
+	_self.value_release_click_notifier << handler.new(_self, :handle_value_release_click|()|)
+	_self.release_click_notifier << handler.new(_self, :handle_release_click|()|)
+	# some editting properties
+	_if (p_properties[:edit_on_enter?] _is _true)
+	_then
+		.enter_pressed_notifier << handler.new(_self, :|default_handle_edit()|)
+	_endif
+	# check if we provide a simple editting
+	_if ((l_prop << p_properties[:editors]) _isnt _unset)
+	_then
+		_self.editors << l_prop
+		.editor_required_notifier << handler.new(_self, :|default_editor_required()|)
+	_endif
+	_if ((l_prop << p_properties[:edit_always_on?]) _is _true)
+	_then
+		.edit_always_on? << l_prop
+		# if this :edit_always_on? is _true, we want :edit_on_click? to be _true (default) as well
+	_elif ((l_prop << p_properties[:edit_on_click?]) _isnt _unset)
+	_then
+		.edit_on_click? << l_prop
+	_endif
+	# check if we want to give some dragging behaviour
+	_if ((l_simple_dragging? << (p_properties[:simple_dragging?] _is _true)) _or 
+	     (l_same_parent_dragging? << (p_properties[:same_parent_dragging?] _is _true)) _orif
+	     p_properties[:allow_dragging_notifier] _isnt _unset)
+	_then
+		.drag_notifier << handler.new(_self, :|notify_default_dragging()|)
+		_if l_simple_dragging? _orif l_same_parent_dragging?
+		_then
+			.allow_dragging_notifier << _if l_simple_dragging?
+						    _then >> handler.new(_self, :|allow_simple_dragging?()|)
+						    _else >> handler.new(_self, :|allow_same_parent_dragging?()|)
+						    _endif
+			.release_dragging_notifier << handler.new(_self, :|notify_release_dragging()|)
+		_endif
+	_else 
+		.drag_notifier << handler.new(_self, :|notify_default_select_dragging()|)
+	_endif
+	# set all passed properties
+	_for i_notifier_name, i_notifier _over p_properties.fast_keys_and_elements()
+	_loop
+		_if _self.exported_notifiers.includes?(i_notifier_name)
+		_then
+			_self.perform_private(i_notifier_name.with_chevron, handler.check_type(i_notifier, p_new_model))
+		_endif
+	_endloop
+	_if (.key_pressed_notifier _is _unset) _then .key_pressed_notifier << handler.new(_self, :|default_handle_keypress()|) _endif
+	_if (.enter_pressed_notifier _is _unset) _then .enter_pressed_notifier << .double_click_notifier _endif
+	# ToDo: for hypertext/drag allow *move* events as well OR hotspots?
+	>> _self
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.enable_events()
+	## Parameters    : -
+	## Returns       : -
+	## Function      : Enable the events that should be generated
+	##                 by _self's window, but cannot be required when the agent is
+	##                 created (since it does not have the window at that moment).
+	##                 Also calls .activate_right_mouse_menu to
+	##                 invoke a the notifier for and set the headings menu.
+	## Methodology   : Subclasses overriding this method must call
+	##                 their super method.
+	.window.enable_event(:keyboard)
+        .window.enable_event(:button)
+        .window.enable_event(:drag)
+        .window.enable_event(:double_click)
+	.window.enable_event(:focus)
+	.window.enable_scroll_events()
+
+	.window.set_property(:emulate_middle_button?,_false)
+
+	.window.visible_notify_selector << handler.new(_self,:|handle_visibility_notification()|)
+	
+	# enable callbacks if necessary
+	_self.edit_always_on? << .edit_always_on?
+	_self.activate_right_mouse_menu(_unset, 1, _unset, _true)
+	# set up dependencies
+	_self.int!set_dependencies()
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_method tree_agent.notify(p_notifier_name, _gather p_args)
+	## Parameters    : P_NOTIFIER_NAME: Name of the notifier that
+	##                    we are about to perform (privately)
+	##                 P_ARGS: Arguments we will pass to the perform.
+	## Returns       : The reult of invoking P_NOTIFIER_NAME with
+	##                 P_ARGS on _self.
+	## Function      : Check if P_NOTIFIER_NAME is a valid
+	##                 notifier, and if so, perform it and return its results.
+	_if _not _self.exported_notifiers.includes?(p_notifier_name)
+	_then
+		condition.raise(:error, :string, "Unknown notifier: " + p_notifier_name)
+	_endif
+	>>_if ((l_notifier << _self.perform_private(p_notifier_name)) _isnt _unset)
+	  _then >> l_notifier.invoke(_scatter p_args)
+	  _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_agent.tree_renderer
+	## Parameters    : 
+	## Returns       : The default renderer that is used to draw
+	##                 trees on self's window.
+	## Function      : 
+	>> .window.tree_renderer
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_agent.heading_renderer
+	## Parameters    : 
+	## Returns       : The default heading renderer that is used to draw
+	##                 the column headings at the start of self's window.
+	## Function      : 
+	>> .window.heading_renderer
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_agent.style_holder
+	## Parameters    : 
+	## Returns       : The style holder that is used by the default renderer.
+	## Function      : 
+	>> _self.tree_renderer.style_holder
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_agent.headings_holder
+	## Parameters    : 
+	## Returns       : The headings_holder that knows all about
+	##                 self's columns.
+	## Function      : 
+	>> _self.tree_renderer.headings_holder
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.pre_sort_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the
+	##                 end-user sort a column. If this method
+	##                 returns _true, it is assumed that it has
+	##                 carried out the sorting (and this is not
+	##                 done anymore by the standard code). Otherwise,
+	##                 the trees are sorted and the :sort_notifier
+	##                 is invoked.
+	##                 When invoked, the handler gets passed two arguments:
+	##                 P_COLUMN_INDEX: Index of column that
+	##                    end-user wants to sort on.
+	##                 P_WINDOW: The tree_item (also canvas).
+	.pre_sort_notifier << handler.check_type(p_new, .model)
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.sort_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when we have
+	##                 just sorted on a column.
+	##                 When invoked, the handler gets passed two arguments:
+	##                 P_COLUMN_INDEX: Index of column that
+	##                    end-user wants to sort on.
+	##                 P_WINDOW: The tree_item (also canvas).
+	.sort_notifier << handler.check_type(p_new, .model)
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.default_handle_event(p_event)
+	## Parameters    : P_EVENT: Event that has been raised.
+	## Returns       : True if the event has been handled, false if
+	##                 it still needs handling
+	## Function      : Process events within _self's window that
+	##                 are specific to display_tree behaviour. I.e.
+	##                 events handling that is done superclasses
+	##                 is not called or implemented here.
+	## Methodology   : If subclass overrides this method it should
+	##                 call its super.
+	_local l_id << p_event.id
+	_local l_category << p_event.category
+	_if (l_category _isnt :locator) _andif (l_id _isnt :drag) _andif (p_event.func _isnt :release)
+	_then
+		# reset override data, this may be used for event that may
+		# follow each other (and for the override mode, which we are
+		# not in at this moment). Examples are: when we are dragging,
+		# we want to compare to the previous drag and know if we
+		# dragged at least 8 pixels (to avoid drag's by
+		# accident). The assumption is: if we are in this method, than
+		# we can safely do with .int!override_data what we want.
+		# Another situation is where the user has done a click (press) that did
+		# not change the selection; we preserve that information for
+		# the release so we can act on it in a different way)
+		.int!override_data << _unset
+	_endif
+	# process different catagoies
+	_if (l_category _is :button)
+	_then
+		_return _self.handle_mouse_button_event(p_event)
+	_elif (l_category _is :locator)
+	_then
+		_local (l_row, l_in_col_headings?, l_row_index, l_remainder) << .window.row_at(p_event.y)
+		_if (l_id _is :drag)
+		_then
+			_if l_in_col_headings?
+			_then
+				# dragging of columns... done elsewhere (override handler)
+			_else
+				# enter dragging mode...
+				_self.notify(:drag_notifier, l_row, l_row_index, p_event)
+			_endif
+		_endif
+		_return _true 
+	_elif (l_category _is :keyboard)
+	_then
+		_return _self.handle_keypress(p_event)
+	_else 
+		_return _super.handle_event(p_event)
+	_endif
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.handle_event(p_event)
+	## Parameters    : P_EVENT: Event that has been raised.
+	## Returns       : _true if the event has been handled,
+	##                 _false if it still needs handling.
+	## Function      : If necessary, fix P_EVENT.
+	##                 If an .int!override_handler has been
+	##                 specified, use it to handle P_EVENT. (It returns _true or
+	##                 _false, <action>, <action_data>. Here,
+	##                 <action> is looked up in .notifier_for_action, 
+	##                 and if a notifier exists, it is 
+	##                 invoked with <action_data>).
+	##                 In all other situations (the default),
+	##                 _self.default_handle_event(P_EVENT) is called.
+	## Methodology   : If subclass overrides this method, it should
+	##                 first call this one
+        
+	_if _self.fix_event(p_event)
+	_then
+		_return _true
+	_endif
+        
+	_if ((l_id << p_event.id) _is :gained_focus)
+	_then
+		.window.has_focus? << _true
+		# check if we should re-establish the editor in its new place
+		_self.check_always_edit()
+		_return _true
+	_elif (l_id _is :lost_focus)
+	_then
+		.window.has_focus? << _false
+		_return _true
+	_elif (p_event.category _is :window)
+	_then
+		_if (l_id _is :scroll)
+		_then
+			# We may want to reposition the edit controls here too
+			_self.check_edit_position( _true )
+			_return _true 
+		_elif (l_id _is :config_change)
+		_then
+			# do the normal config change
+			_self.config_change()
+			# We may want to reposition the edit controls here too (just
+			# like when we respond to the scroll event)
+			_self.check_edit_position( _true )
+			_return _true 
+		_elif (l_id _is :damaged)
+		_then
+			_self.damaged(p_event.damaged_area)
+			_return _true 
+		_endif
+	_elif (l_id _is :open_or_close)
+	_then
+		_if _self.editing?
+		_then
+			_self.edit_manager.open_or_close(p_event)
+		_endif
+	_endif
+        
+	_if ((l_handler << .int!override_handler) _isnt _unset)
+	_then
+		# perform temp handler;
+		_local (l_handled?, l_action, _gather l_data) << l_handler.invoke(p_event, _self)
+		_if (l_handled? _is _true)
+		_then
+			_return _true 
+		_elif ((l_notifier << _self.notifier_for_action[l_action]) _isnt _unset) _andif
+		      (_self.notify(l_notifier, _scatter l_data) _is _true)
+		_then
+			_return _true 
+		_endif
+	_else
+		_return _self.default_handle_event(p_event)
+	_endif
+        
+	>> _super.handle_event(p_event)
+        
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.fix_event(p_event)
+	## Parameters    : P_EVENT: Event that has been raised.
+	## Returns       : True if P_EVENT has been processed or needs
+	##                 to be ignored, _false otherwise.
+	## Function      : Check for damaged and config-change events.
+	## Methodology   : Subclasses that override this method, should
+	##                 call their super.
+	_if (p_event.category _is :window) _andif (p_event.id _is :damaged)
+	_then
+		# always check if we changed dimensions
+		_self.config_change()
+		_self.damaged(p_event.damaged_area)
+		_return _true
+	_endif
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.handle_keypress(p_event)
+	## Parameters    : P_EVENT: An event of category :keyboard
+	## Returns       : _true if P_EVENT got handled, _false otherwise
+	## Function      : First call the :key_pressed_notifier which
+	##                 should return true if it handled it;
+	##                 Then check if the key is 'enter' and call
+	##                 the enter_pressed_notifier.
+	## Methodology   : Subclasses overriding this method should
+	##                 call their super method first.
+	_if (_self.notify(:key_pressed_notifier, p_event) _is _true)
+	_then
+		_return _true
+	_elif ((l_char << p_event.id) _is tab_char)
+	_then
+		# tab character is dealth with by changing focus
+		_return _true 
+	_elif (l_char _is newline_char) _orif (l_char _is character.return)
+	_then
+		_local l_selection << _self.selection
+
+		_if (l_display_tree << l_selection.start_tree) _isnt _unset _orif 
+		    .enter_pressed_notifier _isnt .double_click_notifier
+		_then
+			# Either a real enter_pressed_notifier, or it acts as the
+			# double_click_notifier and there's actually something
+			# selected. 
+			_return _self.notify(:enter_pressed_notifier, l_display_tree, l_selection.start_row, p_event, l_selection)
+		_endif
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_method tree_agent.default_handle_keypress(p_keyb_event)
+	## Parameters    : P_KEYB_EVENT: An input event of category :keyboard.
+	## Returns       : _true if P_KEYB_EVENT is handled, _false otherwise
+	## Function      : Call handle_keypress() on selection, if the
+	##                 selection did not handle it, try to handle it myself:
+	##                  * On key 'left' or 'right' try to compress
+	##                    / expand the selected tree respectively.
+	##                  * On key 'enter' handle it elsewhere.
+	##                  * On a character, search for it, and ring a
+	##                    bell if there is not element that starts with it.
+	##                  * On key Ctrl-'left' or 'right' scroll
+	##                    'left' or 'right' respectively.
+	##                  * On key Ctrl-C, copy selected text
+	##                    contents to clipboard.
+	_local l_selection << _self.selection
+	_local (l_handled?, l_tree, l_row_index, l_col_index, l_end_row_index, l_end_col_index) << l_selection.handle_keypress(p_keyb_event)
+	_if l_handled?
+	_then
+		.window.ensure_visibility(l_row_index, l_col_index, l_end_row_index, l_end_col_index)
+	_else 
+		# check if we can do something ourselves with this keypress
+		_local l_char << p_keyb_event.id, l_char? << l_char.is_class_of?(character)
+		# check for select all keystroke
+		_if (p_keyb_event.modmask _is 0) _orif l_char?
+		_then
+			_if (l_char _is :left) _orif (l_char _is :kp_left) _orif (l_char _is %-)
+			_then
+				_if ((l_tree << l_selection.start_tree) _isnt _unset)
+				_then
+					_block
+						_dynamic !updating_trees?! << _true
+						l_tree.expanded? << _false
+					_endblock 
+					_return _self.notify(:expand_notifier, l_tree, l_selection.start_row, p_keyb_event)
+				_endif
+			_elif (l_char _is :right) _orif (l_char _is :kp_right) _orif (l_char _is %+)
+			_then
+				_if ((l_tree << l_selection.end_tree) _isnt _unset)
+				_then
+					_block
+						_dynamic !updating_trees?! << _true
+						l_tree.expanded? << _true
+					_endblock
+					_return _self.notify(:expand_notifier, l_tree, l_selection.end_row, p_keyb_event)
+				_endif
+			_elif (l_char _is newline_char) _orif (l_char _is character.return) _orif (l_char _is tab_char)
+			_then
+				# this might be of interest elsewhere, we certainly do not want
+				# to start searching for it
+				_return _false
+			_elif _self.edit_always_on?
+			_then
+				# do special edit behaviour
+				_self.always_edit_handle_keypress(p_keyb_event)
+			_elif (p_keyb_event.modmask _is 2)
+			_then
+				_if (l_char _is character.prop!name_to_char[:etx])
+				_then
+					# user pressed Ctrl-C
+					.window.clipboard_text << _self.selection.as_charvec()
+				_elif (l_char _is character.prop!name_to_char[:soh])
+				_then
+					# user pressed Ctrl-A
+					_if _not _self.selection.enforce_single?
+					_then
+						_self.selection.select_all()
+					_endif
+				_endif
+			_elif l_char?
+			_then
+				(l_tree, l_row_index, l_col_index) << .window.next_element_starting_with(l_char.lowercase)
+				_if (l_tree _is _unset)
+				_then
+					!window_system!.bell()
+				_else
+					l_selection.set_selection(l_tree, l_row_index, l_col_index)
+					.window.ensure_row_visibility(l_row_index)
+				_endif
+				_return _true 
+			_elif (p_keyb_event.id _is :f2)
+			_then
+				_if ((l_tree << l_selection.start_tree) _isnt _unset)
+				_then
+					_return _self.default_handle_edit(l_tree, l_selection.start_row, p_keyb_event, l_selection)
+				_endif
+			_endif
+		_elif (p_keyb_event.modmask _is 2)
+		_then
+			_local l_hh << _self.headings_holder
+			_if (l_char _is :left) _orif (l_char _is :kp_left)
+			_then
+				# if we have the *ability* for a horizontal scrollbar, pressing
+				# Ctrl-Left/Right will scroll on that bar. Otherwise, it will -
+				# VS.Net compliant, resize the first column
+				_if (l_hh.distribute_spare_width _is :always)
+				_then
+					# make first column smaller, in steps of 10
+					_if ((l_value << l_hh.column_width(1)) > l_hh.column_min_width(1))
+					_then
+						l_hh.column_width(1) << 0.max((((l_value + 9) _div 10) - 1) * 10)
+					_endif
+				_else 
+					# check if we can scroll left, in steps of 10
+					_if ((l_value << .window.horizontal_position) > 0)
+					_then
+						.window.horizontal_position << 0.max((((l_value + 9) _div 10) - 1) * 10)
+					_endif
+				_endif
+				_self.check_edit_position()
+			_elif (l_char _is :right) _orif (l_char _is :kp_right)
+			_then
+				# if we have the *ability* for a horizontal scrollbar, pressing
+				# Ctrl-Left/Right will scroll on that bar. Otherwise, it will -
+				# VS.Net compliant, resize the first column
+				_if (l_hh.distribute_spare_width _is :always)
+				_then
+					# make first column wider, in steps of 10
+					_if ((l_value << l_hh.column_width(1)) < (l_max << l_hh.width))
+					_then
+						l_hh.column_width(1) << l_max.min((((l_value + 9) _div 10) + 1) * 10)
+					_endif
+				_else 
+					# check if we can scroll right
+					_if ((l_value << .window.horizontal_position) < (l_max << .window.h_doc_size))
+					_then
+						.window.horizontal_position << l_max.min((((l_value + 9) _div 10) + 1) * 10)
+					_endif
+				_endif
+				_self.check_edit_position()
+			_endif
+			_return _true 
+		_endif 
+		_return _false 
+	_endif
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method tree_agent.column_at(p_x)
+	## Parameters    : P_X: Horizontal position in self's window.
+	## Returns       : The number of the column that includes P_X,
+	##                 _unset if not is found.
+	## Function      : 
+	>> _self.tree_renderer.column_at(p_x)
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_agent.column_selectable?(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: Number of the column
+	## Returns       : _true if the end-user can select that column,
+	##                 _false if that is now allowed.
+	## Function      : 
+	>> _self.headings_holder.column_selectable?(p_column_index)
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_agent.handle_click(p_tree, l_row_index, p_event)
+	## Parameters    : P_TREE: Tree that is clicked on, is 
+	##                    allowed to be unset, in chich case all
+	##                    trees will be selected.
+	##                 L_ROW_INDEX: The row on which P_TREE is displayed.
+	##                 P_EVENT: The event that caused all
+	##                    this. Used for it's modmask (set, extend, or toggle) and to
+	##                    determine the column
+	## Returns       : -
+	## Function      : Changes the selection to P_TREE. Depending on the
+	##                 P_EVENT, the selection is set, extended, or toggled.
+	_if ((l_data << .int!override_data) _isnt _unset)
+	_then
+		(l_old_down_mode) << (_scatter .int!override_data)
+	_endif
+	_local l_sel_column << _self.column_at(p_event.x)
+	# store that we are processing a mouse down event for later use (dragging) depending on it;
+	# (checking dragging is only allowed after a click); reserve 5th element
+	.int!override_data << {:mouse_down, p_event.x, p_event.y, l_sel_column, _unset}
+	# check selection
+	_if (l_sel_column _is _unset)
+	_then
+		_return
+	_elif (l_sel_column _is 0)
+	_then
+		l_sel_column << _true
+	_elif _not _self.column_selectable?(l_sel_column)
+	_then
+		_return 
+	_endif
+	_local l_selection << _self.selection
+	# check kind of action
+	_local (l_changed?, l_canceled?) <<
+		_if (p_tree _is _unset)
+		_then
+			>> l_selection.select_all(l_sel_column)
+		# When looking at the modmask we only consider the settings of
+		# the shift and control keys - hence the _mod 4.
+		_elif ((l_modmask << p_event.modmask _mod 4) _is 0)
+		_then
+			>> l_selection.set_selection(p_tree, l_row_index, l_sel_column)
+		_elif ((l_modmask _and 1) _is 1) # shift or shift-control
+		_then
+			>> l_selection.extend_selection(p_tree, l_row_index, l_sel_column)
+		_elif (l_modmask _is 2) # control
+		_then
+			>> l_selection.toggle_selection(p_tree, l_row_index, l_sel_column)
+		_endif
+	# if cancelled, ignore next release
+	_if l_canceled?
+	_then
+		_return _true 
+	_endif
+	# set data for editing
+	_if (_not l_changed?) _andif (l_old_down_mode _isnt :mouse_down)
+	_then
+		# mark that the user did a click (press) that did not change
+		# the selection, thus we might act on that later on
+		.int!override_data << {:selection_click_with_no_change, p_event.x, p_event.y, l_sel_column, _unset}
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=basic, usage={subclassable})
+_method tree_agent.selection
+	## Provides access to the tree_items (self's window) selection,
+	## which is a display_tree_selection.
+	>> _self.tree_manager.selection
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method tree_agent.handle_radio_toggle(p_tree, _optional p_row_index, p_event, p_value, p_text_style, p_text, p_dx, p_dy)
+	## Parameters    : P_TREE: The display tree on which the user
+	##                    changed a radio_toggle.
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised
+	##                 P_VALUE: _unset, or the :index in the
+	##                    display_trees value if the text comes from a :value mark
+	##                 P_TEXT_STYLE: Which is always :resolved_image
+	##                 P_IMAGE: The image as it has been resolved
+	##                 P_DX, P_DY: Relative position in P_IMAGE
+	##                    (compared to P_TEXT top left being (0,0)
+	## Returns       : _false, denoting that we do not want the
+	##                 agent to redraw (which is done manually,
+	##                 called from this method).
+	## Function      : Use the style_holder to resolve the new
+	##                 value (toggle) for the index P_VALUE; if the value changed
+	##                 then set all other radio toggles to the 'new value'.not.
+	##                 'All all other radio toggles' are determined
+	##                 as follows: If P_VALUE is unset, then all P_TREE siblings'
+	##                 value is reset; If P_VALUE isnt unset, then all other
+	##                 values-indices following :radio_toggle in
+	##                 the styled_string will be reset for this P_TREE.
+	##                 If the value changed, value_changed_notifier will be called.
+	## Methodology   : The other radio toggle are determined as follows.
+	##                 If P_VALUE is unset, it is assumed P_TREE's
+	##                 siblings contain the other radio-toggles, thus a vertical
+	##                 value change will be carried out.
+	##                 If P_VALUE is an index, it is assumed P_TREE
+	##                 will contain other :radio_toggles, thus a value change will
+	##                 be carried out for the other :radio_toggles as identified by
+	##                 P_TREE's styled string.
+	_local l_old_value << p_tree.value(p_value)
+	_local l_new_value << _self.style_holder.resolve_toggle(l_old_value, :radio_toggle, p_value)
+	_if (l_old_value _isnt l_new_value)
+	_then
+		p_tree.value(p_value) << l_new_value
+		_self.notify(:value_changed_notifier, p_tree, p_value, l_new_value, l_old_value, _unset)
+		_local l_not_value << l_new_value.not
+		_if (p_value _is _unset)
+		_then
+			# no index, thus we have a vertical radio
+			_for i_sibling _over p_tree.fast_siblings()
+			_loop
+				# check if this one also contains a vertical radio
+				_local l_def << i_sibling.styled_string.as_simple_vector()
+				_local l_pos << l_def.index_of(:radio_toggle)
+				_if (l_pos _isnt _unset) _andif (l_def.size > l_pos) _andif
+				    (l_def[l_pos  + 1] _is _unset)
+				_then
+					l_old_value << i_sibling.value
+					i_sibling.value << l_not_value
+					_self.notify(:value_changed_notifier, i_sibling, p_value, l_not_value, l_old_value, _unset)
+				_endif
+			_endloop
+		_else
+			# we have a horizontal radio, inside this tree
+			_for i_key, i_function _over p_tree.styled_string.fast_elements_in_pairs()
+			_loop
+				_if (i_function _isnt :radio_toggle) _orif (i_key _is p_value) _then _continue _endif
+				l_old_value << p_tree.value(i_key) 
+				p_tree.value(i_key) << l_not_value
+				_self.notify(:value_changed_notifier, p_tree, i_key, l_not_value, l_old_value, _unset)
+			_endloop
+		_endif
+		# ToDo: Improve this: we only need to redraw some rows
+		_self.damaged(_unset)
+	_endif
+	# we do not want to redraw
+	>> _false
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method tree_agent.handle_toggle(p_tree, _optional p_row_index, p_event, p_value, p_text_style, p_text, p_dx, p_dy)
+	## Parameters    : P_TREE: The display tree on which the user
+	##                    changed a radio_toggle.
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised
+	##                 P_VALUE: _unset, or the :index in the
+	##                    display_trees value if the text comes from a :value mark
+	##                 P_TEXT_STYLE: Which is always :resolved_image
+	##                 P_IMAGE: The image as it has been resolved
+	##                 P_DX, P_DY: Relative position in P_IMAGE
+	##                    (compared to P_TEXT top left being (0,0)
+	## Returns       : _false, denoting that we do not want the
+	##                 agent to redraw (which is done manually,
+	##                 called from this method).
+	## Function      : Use the style_holder to resolve the new
+	##                 value (toggle) for the index P_VALUE. That
+	##                 is stored then in P_TREE.value(P_VALUE) << .
+	##                 If the value changed, value_changed_notifier will be called.
+	_local l_old_value << p_tree.value(p_value)
+	_local l_new_value << _self.style_holder.resolve_toggle(l_old_value, :toggle, p_value)
+	_if (l_old_value _isnt l_new_value)
+	_then
+		p_tree.value(p_value) << l_new_value
+		_self.notify(:value_changed_notifier, p_tree, p_value, l_new_value, l_old_value, _unset)
+		# ToDo: Improve this: we only need to redraw this row
+		_self.damaged(_unset)
+	_endif
+	# we do not want to redraw
+	>> _false
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_method tree_agent.damaged(p_area)
+	## Redraw the canvas area defined by the bounding box P_AREA.
+	.window.redraw(p_area, _true)
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_method tree_agent.handle_column_click( p_event, p_column_index )
+	## Parameters    : P_EVENT: Event that has been raised
+	##                 P_COLUMN_INDEX: Column the event is in.
+	## Returns       : -
+	## Function      : Set mouse cursor to busy and carry out
+	##                 desired action: if sorting is allowed, sort,
+	##                 otherwise select the column
+
+	_if _self.headings_holder.column_allow_sort?(p_column_index)
+	_then
+		.window.background_process( :|sort_column()|, p_column_index )
+		
+	_elif _self.selection.cell_selection?
+	_then
+		.window.cursor << mouse_cursor.standard_cursor(:busy)
+		_protect 
+			# default handler: select
+			_self.notify(:click_notifier, _unset, _unset, p_event)
+		_protection
+			_self.set_default_cursor()
+		_endprotect
+	_endif
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_method tree_agent.handle_column_resize(p_event, p_column_index, p_new_width)
+	## Parameters    : P_EVENT: Event that has been raised.
+	##                 P_COLUMN_INDEX: Column the event is in.
+	##                 P_NEW_WIDTH: The new width as the user has
+	##                    resized the left most column to.
+	## Returns       : -
+	## Function      : Check if the event func is a release, and if
+	##                 it is, change the column width accordingly; if it is a
+	##                 double release, ignore P_NEW_WIDTH and compute the column's
+	##                 optimal width.
+	# for keyboard events, the func is unset... still they might be
+	# used to resize the first column
+	_if ((l_func << p_event.func) _is :release) _orif (l_func _is _unset)
+	_then
+		# this causes a :width changed notification...
+		_self.headings_holder.column_width(p_column_index) << p_new_width
+		_self.check_edit_position()
+	_elif (l_func _is :double_release)
+	_then
+		# this causes a :width changed notification...
+		_self.headings_holder.column_width(p_column_index) << _self.headings_holder.optimal_column_width(p_column_index)
+		_self.check_edit_position()
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.activate_right_mouse_menu(p_tree, p_row_index, p_event, p_in_col_headings?)
+	## Parameters    : P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised. Can be unset
+	##                    (the first time, when the menu is set)
+	##                 P_IN_COL_HEADINGS?: _true if we are in the
+	##                    column headings, _false if we are not.
+	## Returns       : -
+	## Function      : Invoke the :right_click_notifier notifier,
+	##                 and pass it the appropriate menu as the
+	##                 fifth parameter.
+	_local l_tree_item << .window
+	_local l_menu << l_tree_item.menu << _if p_in_col_headings?
+					     _then >> l_tree_item.headings_popup_menu
+					     _else >> l_tree_item.popup_menu
+					     _endif
+	_self.notify(:right_click_notifier, p_tree, p_row_index, p_event, p_in_col_headings?, l_menu)
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.notify_default_select_dragging(p_tree, p_row_index, p_event)
+	## Parameters    : P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised.
+	## Returns       : _true if event has been handled, _false if
+	##                    it still needs handling.
+	## Function      : Check if we are in a mouse down and if we
+	##                 made a 'move' (i.e. we moved more than 8 pixels in any direction)
+	# check if we dragged at least 8 pixels
+	_if ((l_data << .int!override_data) _isnt _unset)
+	_then
+		(l_down_mode, l_old_x, l_old_y) << (_scatter .int!override_data)
+	_endif
+	_if (p_tree _is _unset) _orif
+	    ((l_down_mode _isnt :mouse_down) _andif (l_down_mode _isnt :selection_click_with_no_change)) _orif 
+	    _not ((((p_event.y - l_old_y).abs >= 8) _orif ((p_event.x - l_old_x).abs >= 8)))
+	_then
+		_return _false
+	_endif 
+	# do the default: extend the selection
+	p_event.category << :button; p_event.modmask << 1; p_event.id << :left; p_event.func << :press
+	_self.notify(:click_notifier, p_tree, p_row_index, p_event)
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.notify_default_dragging(p_tree, p_row_index, p_event)
+	## Parameters    : P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised.
+	## Returns       : _true if event has been handled, _false if
+	##                    it still needs handling.
+	## Function      : Check if dragging is allowed, and if so,
+	##                 override the current mode with the
+	##                 int!default_dragging handler.
+	.int!override_handler << handler.new(_self, :|int!handle_default_dragging()|)
+	_self.int!handle_default_dragging(p_event, _self)
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.int!handle_default_dragging(p_event, p_agent)
+	## Parameters    : P_EVENT: Event that has been raised.
+	##                 P_AGENT: The agent that is handling events
+	##                    for the window of P_EVENT.
+	## Returns       : _true if the event has been handled, _false otherwise
+	## Function      : Check by invoking :allow_dragging_notifier
+	##                 if dragging is allowed. If it is not or the
+	##                  end-user presses the escape-key, return to non-dragging mode.
+	##                 If dragging is fine and the end-user
+	##                 releases, :release_dragging_notifier is invoked.
+	##                 If drag destinations have been registered
+	##                 (the register action takes place on the source)
+	##                 and dragging on one of these destinations is taking place,
+	##                 then the allow-drag and release-drag handlers for that source
+	##                 are called.
+	_if ((l_category << p_event.category) _is :locator) _andif (p_event.id _is :drag)
+	_then
+		_block @validation
+			# check if we have dragged enough...
+			_if ((l_drag_data << .int!override_data) _isnt _unset) _andif (l_drag_data.size = 5)
+			_then
+				(l_down_mode, l_old_x, l_old_y, l_old_column, l_drag_mouse) << (_scatter l_drag_data)
+			_endif
+			_if (l_down_mode _isnt :mouse_down) _andif (l_down_mode _isnt :selection_click_with_no_change)
+			_then
+				# no new row, no new cell
+				_leave @validation
+			_endif
+			# check if we are still in the same cell
+			_local l_column << _self.column_at(p_event.x)
+			_if (((p_event.y - l_old_y).abs < 8) _andif (l_old_column = l_column))
+			_then
+				# no new row, no new cell
+				_leave @validation
+			_endif
+			# get drag handlers and arguments to pass
+			_local (l_notifiers, l_args) << _self.int!locate_drag_handlers(p_event, l_drag_mouse)
+			_if (l_notifiers _is _unset)
+			_then
+				_leave @validation
+			_endif
+			# call allow notifier
+			(l_allow?, l_drag_mouse) << l_notifiers[1](_scatter l_args)
+			# set the result if we're still hovering above something valid
+			_if (l_allow? _isnt _true)
+			_then
+				_leave @validation
+			_endif
+			# store which mouse we use, for the release notifier
+			_if (l_drag_mouse _is _unset) _then l_drag_mouse << l_args[l_args.size - 1] _endif
+			.window.cursor << smallworld_product.get_cursor(l_drag_data[5] << l_drag_mouse, :ui_resources)
+			_return _true 
+		_endblock
+		.window.cursor << smallworld_product.get_cursor(:invalid, :ui_resources)
+		# we've handled this
+		_return _true 
+	_elif (l_category _is :button) _andif
+	      (((l_func << p_event.func) _is :release) _orif (l_func _is :double_release))
+	_then
+		# confirm dragging operation
+		l_drag_data << .int!override_data ^<< .int!override_handler << _unset
+		_self.set_default_cursor()
+		l_drag_mouse << _if (l_drag_data _isnt _unset) _andif (l_drag_data.size = 5) _then >> l_drag_data[5] _endif
+		# get drag handlers and arguments to pass, check if we are carrying out a valid drag action...
+		_local (l_notifiers, l_args) << _self.int!locate_drag_handlers(p_event, l_drag_mouse)
+		_if (l_notifiers _is _unset)
+		_then
+			_return _true 
+		_endif
+		# call allow-drag notifier
+		(l_allow?, l_drag_mouse) << l_notifiers[1](_scatter l_args)
+		_if (l_allow? _is _true)
+		_then
+			_if (l_drag_mouse _isnt _unset) _then l_args[l_args.size - 1] << l_drag_mouse _endif
+			# we can do a release-drag notifier now
+			l_notifiers[2](_scatter l_args)
+			# check if we have dragged to a destination tree-item
+			_if (l_window << l_args[1]).is_class_of?(tree_item)
+			_then
+				l_window.set_focus()
+			_endif
+		_endif
+		# we've handled this
+		_return _true
+	_elif ((p_event.category _is :keyboard) _andif (p_event.id = character.escape))
+	_then
+		# cancel dragging operation
+		.int!override_data << .int!override_handler << _unset 
+		_self.set_default_cursor()
+		# we've handled this
+		_return _true
+	_endif
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.allow_simple_dragging?(p_tree, p_row_index, p_col_index, p_selection, p_event, p_default_mouse, _optional p_first_time?)
+	## Parameters    : P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_COL_INDEX: Index in the list of columns.
+	##                 P_SELECTION: Display tree selection which is
+	##                    the current set of selected trees, i.e. the ones that are
+	##                    being dragged onto P_TREE.
+	##                 P_EVENT: Event that has been raised.
+	##                 P_DEFAULT_MOUSE: Depending on modmask of P_EVENT:
+	##                    When just Ctrl or Shft are pressed, :copy is the default;
+	##                    For Alt or combinations, this is :link; and
+	##                    With no modifier, this defaults to :move.
+	##                 [P_FIRST_TIME?]: _true if this is the first
+	##                    time the dragging notifier is called for
+	##                    this drag operation. (This allows to setup caches).
+	## Returns       : 1) _true if dragging is allowed, _false otherwise.
+	##                 2) :move, since we have only implemented the
+	##                    move operation by default (customisations
+	##                    may return :copy or :link as well, or another known mouse cursor)
+	## Function      : If we are dragging P_TREE onto something that is not in P_SELECTION,
+	##                 andif non of its parent is in P_SELECTION, 
+	##                 dragging is allowed.
+	##                 (This is so, since we do not allow a parent to
+	##                 become its own child.)
+	_if ((p_col_index _isnt _unset) _andif (p_col_index > 0))
+	_then
+		# we are dragging the selection, and should not be dragged onto itself
+		_for i_parent _over p_tree.branch_to_root()
+		_loop
+			_if i_parent.selected?
+			_then
+				_return _false 
+			_endif
+		_endloop
+		_return (_true, :move) 
+	_endif
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.allow_same_parent_dragging?(p_tree, p_row_index, p_col_index, p_selection, p_event, p_default_mouse, _optional p_first_time?)
+	## Parameters    : P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_COL_INDEX: Index in the list of columns.
+	##                 P_SELECTION: Display tree selection which is
+	##                    the current set of selected trees, i.e. the ones that are
+	##                    being dragged onto P_TREE.
+	##                 P_EVENT: Event that has been raised.
+	##                 P_DEFAULT_MOUSE: Depending on modmask of P_EVENT:
+	##                    When just Ctrl is pressed, :copy is the default;
+	##                    For Alt, this is :link; and
+	##                    otherwise this defaults to :move.
+	##                 [P_FIRST_TIME?]: _true if this is the first
+	##                    time the dragging notifier is called for
+	##                    this drag operation. (This allows to setup caches).
+	## Returns       : 1) _true if dragging is allowed, _false otherwise.
+	##                 2) :move, since we have only implemented the
+	##                    move operation by default (customisations
+	##                    may return :copy or :link as well, or another known mouse cursor)
+	## Function      : Check if we have move a minimum distance, if
+	##                 so and we are we have a proper mouse_down, and we are
+	##                 dragging onto something that is not in
+	##                 P_SELECTION, and we are dragging onto children of P_TREE
+	##                 parent (i.e. P_TREE's siblings), then dragging
+	##                 is allowed.
+	_if _not _self.allow_simple_dragging?(p_tree, p_row_index, p_col_index, p_selection, p_event, p_default_mouse, p_first_time?) _then _return _false _endif
+	_local l_destination_parent << p_tree.parent
+	_for i_sel_tree _over p_selection.fast_elements()
+	_loop
+		_if (i_sel_tree.parent _isnt l_destination_parent)
+		_then
+			_return _false 
+		_endif
+	_endloop
+	>> (_true, :move)
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.notify_release_dragging(p_tree, p_row_index, p_col_index, p_selection, p_event, p_default_mouse)
+	## Parameters    : P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_COL_INDEX: Index in the list of columns.
+	##                 P_SELECTION: Display tree selection which is
+	##                    the current set of selected trees, i.e. the ones that are
+	##                    being dragged onto P_TREE.
+	##                 P_EVENT: Event that has been raised.
+	##                 P_DEFAULT_MOUSE: As returned as the second
+	##                    argument of the :allow_dragging_notifier.
+	##                    When just Ctrl is pressed, :copy is the default;
+	##                    For Alt, this is :link; and
+	##                    otherwise this defaults to :move.
+	## Returns       : -
+	## Function      : Detaches all display_trees inside
+	##                 P_SELECTION, and attach them again to P_TREE's parent, below P_TREE.
+	_if (p_tree _is _unset) _then _return _endif
+	_dynamic !updating_trees?! << _true
+	# check current situation
+	_local l_destination_parent << p_tree.parent
+	_local l_old_index << l_destination_parent.index_of_child(p_tree)
+	# gather trees to move
+	_local l_trees_on_the_move << rope.new_from_iter(p_selection.tree_manager, :|fast_selected_trees()|)
+	_for i_sel_tree _over l_trees_on_the_move.fast_elements()
+	_loop
+		# normally this is not necessary when you move something, but
+		# this ensures the position does not get corrected
+		i_sel_tree.detach()
+	_endloop
+	# check if our destination tree moved in the meanwhile
+	_local l_destination_index << l_destination_parent.index_of_child(p_tree)
+	_if (l_old_index > l_destination_index)
+	_then
+		# we are moving the selection to a place below the destination, thus: 'down'
+		l_destination_index +<< 1
+	_endif
+	# now move to the right place
+	_for i_sel_tree _over l_trees_on_the_move.fast_elements()
+	_loop
+		l_destination_parent.add_child(i_sel_tree, l_destination_index +^<< 1)
+	_endloop
+	!updating_trees?! << _false
+	_self.damaged(_unset)
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_method tree_agent.activate()
+	## This is invoked when the related window is activated. It
+	## sets up the dependency between _self and the defined model.
+	_if ((l_tree_item << .window) _isnt _unset)
+	_then
+		_self.int!set_dependencies()
+		l_tree_item.int!set_dependencies()
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_method tree_agent.deactivate()
+	## This is invoked when the related window is deactivated. It
+	## removes the dependency between _self and the defined
+	## model. This is also invoked when a saved image is restored
+	## as the windows which were active at the time of the save are
+	## effectively deactivated.
+	_if ((l_tree_item << .window) _isnt _unset)
+	_then
+		_self.int!remove_dependencies()
+		l_tree_item.int!remove_dependencies()
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_private _method tree_agent.int!set_dependencies()
+	## Makes self dependent on objects / aspects we are interested in:
+	##  * style_holder / :formatter_has_been_set
+	##  * headings_holder / :visible_column_order
+	##  * selection / :selection
+	_self.style_holder.add_dependent(_self, :formatter_has_been_set)
+	_self.headings_holder.add_dependent(_self, :visible_column_order)
+	_self.selection.add_dependent(_self, :pre_selection, :post_selection)
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_private _method tree_agent.int!remove_dependencies()
+	## Undoes self's dependency on objects / aspects we are interested in:
+	##  * style_holder / :formatter_has_been_set
+	##  * headings_holder / :visible_column_order
+	##  * selection / :selection
+	_self.style_holder.remove_dependent(_self, :formatter_has_been_set)
+	_self.headings_holder.remove_dependent(_self, :visible_column_order)
+	_self.selection.remove_dependent(_self, :pre_selection, :post_selection)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method tree_agent.note_change(p_who, p_what, _gather p_values)
+	## Parameters    : P_WHO: Object that issued the change notification.
+	##                 P_WHAT: The aspect that changed: One of
+	##                  * :formatter_has_been_set
+	##                  * :visible_column_order
+	##                 {P_VALUES}: Optional extra arguments;
+	## Returns       : -
+	## Function      : React appropriately to outside changes, call
+	##                 notifiers if necessary. In case of :formatter_changed_notifier,
+	##                 the self's entire window (canvas) will be redrawn.
+	## Methodology   :
+	_if (p_what _is :formatter_has_been_set)
+	_then
+		_self.damaged(_unset)
+		# p_values contains the name field/class for which the
+		# formatter that has been changed, and the new formatter itself
+		_self.notify(:formatter_changed_notifier, _scatter p_values)
+	_elif (p_what _is :visible_column_order)
+	_then
+		_try
+			_self.stop_edit()
+		_when cancel_selection_change
+			# Ignore
+		_endtry
+		# p_values contains the new visible_column_order
+		_self.notify(:column_order_changed_notifier, _scatter p_values)
+	_elif (p_what _is :pre_selection)
+	_then
+		# the selection is about to change, stop editing
+		# as an argument, we get whether the end-user initiated this
+		# change, in which case we allow recovery
+ 		_self.stop_edit(_scatter p_values)
+		# the selection changed, so reset what has been last edited
+		.last_edited_value << _unset
+	_elif (p_what _is :post_selection)
+	_then
+		# check if we should re-establish the editor in its new place
+		_self.check_always_edit()
+	_endif 
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_agent.exported_properties
+	## Returns a set of properties that can be set on self
+	_local l_set << _self.exported_notifiers.copy()
+	l_set.add_all({:model, :simple_dragging?, :same_parent_dragging?, :edit_on_enter?, :editors,
+		       :edit_on_click?, :edit_always_on?})
+	>> l_set
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.drag_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the
+	##                 end-user starts dragging something.
+	##                 If the api-user has set one of:
+	##                  * :simple_dragging?: (Dragging is allowed
+	##                    from one display tree to move to become a child of another)
+	##                  * :same_parent_dragging? (Dragging is
+	##                    allowed to move the order of children below the same parent)
+	##                  * :allow_dragging_notifier (The api-user
+	##                    has specified his own handler to check if dragging is ok or not)
+	##                 then the default drag notifier is _self.notify_default_dragging.
+	##                 When invoked, the handler gets passed three arguments:
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised.
+	.drag_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.column_resize_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the user
+	##                 clicks between two column headings, thus
+	##                 resizing the left most one; defaults to .handle_column_resize().
+	##                 When invoked, the handler gets passed three arguments:
+	##                 P_EVENT: Event that has been raised.
+	##                 P_COLUMN_INDEX: Column the event is in.
+	##                 P_NEW_WIDTH: The new width as the user has
+	##                    resized the left most column to.
+	.column_resize_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.double_click_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the
+	##                 end-user has performed a double click.
+	##                 (It actually gets carried out on the double_release)
+	##                 When invoked, the handler gets passed four arguments:
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised.
+	##                 P_SELECTION: Display tree selection which is
+	##                    the current set of selected trees, i.e. the ones that are
+	##                    being dragged onto P_TREE.
+	.double_click_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.value_click_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the
+	##                 end-user clicks on any object inside the
+	##                 styled string that has been fetched by the
+	##                 :value function. 
+	##                 When invoked, the handler gets passed seven arguments:
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised
+	##                 P_VALUE: _unset, or the :index in the
+	##                    display_trees value if the text comes from a :value mark
+	##                 P_TEXT_STYLE: Which is always :resolved_image
+	##                 P_IMAGE: The image as it has been resolved
+	##                 P_DX, P_DY: Relative position in P_IMAGE
+	##                    (compared to P_TEXT top left being (0,0)
+	.value_click_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.right_click_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the
+	##                 end-user presses the right mouse button.
+	##                 The method does not need to pop up a popup
+	##                 menu, that is done automatically, however
+	##                 this method will be called BEFORE the menu
+	##                 is popped up. This allows the programmer to
+	##                 configure the popup to reflect the currently
+	##                 selected object etc. 
+	##                 When invoked, the handler gets passed five arguments:
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last ohandler.new(p_receiver, p_method, _scatter p_args)ne)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised. Can be unset
+	##                    (the first time, when the menu is set)
+	##                 P_IN_COL_HEADINGS?: _true if we are in the
+	##                    column headings, _false if we are not.
+	##                 P_MENU: The menu that will be raised by
+	##                    default. This will be the headings popup menu
+	##                    if P_IN_COL_HEADINGS? is _true, and the normal poup otherwise.
+	## Returns       : -
+	## Function      : Invoke the :right_click_notifier notifier,
+	##                 and pass it the appropriate menu as the
+	##                 fifth parameter.
+	.right_click_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.hypertext_click_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the
+	##                 end-user clicks in a text string (or
+	##                 any other object that has been converted to one)
+	##                 inside the styled string. The text style for
+	##                 this text has been marked as a 'hypertext'
+	##                 style (default for underlined texts).
+	##                 When invoked, the handler gets passed seven arguments:
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised
+	##                 P_VALUE: _unset, or the :index in the
+	##                    display_trees value if the text comes from a :value mark
+	##                 P_TEXT_STYLE: Text style with what
+	##                    P_TEXT has been drawn.
+	##                 P_TEXT: The text as it is in the parsed styled string
+	##                 P_DX, P_DY: Relative position in P_TEXT
+	##                    (compared to P_TEXT top left being (0,0)
+	.hypertext_click_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.column_click_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the user
+	##                 clicks on a column heading; defaults to .handle_column_click().
+	##                 When invoked, the handler gets passed two arguments:
+	##                 P_EVENT: Event that has been raised.
+	##                 P_COLUMN_INDEX: Column the event is in.
+	.column_click_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.enter_pressed_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the
+	##                 end-user has pressed the enter key.
+	##                 When invoked, the handler gets passed four arguments:
+	##                 P_TREE: The first display_tree in the
+	##                    selection or unset if the selection is
+	##                    empty.
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised.
+	##                 P_SELECTION: Display tree selection which is
+	##                    the current set of selected trees, i.e. the ones that are
+	##                    being dragged onto P_TREE.
+	.enter_pressed_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.middle_mouse_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the
+	##                 end-user uses the middle mouse button.
+	##                 When invoked, the handler gets passed three arguments:
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised.
+	## Methodology   : Works only if win32_window_system.mouse_buttons = 3
+	.middle_mouse_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.key_pressed_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the user
+	##                 presses a key; defaults to .default_handle_keypress().
+	##                 When invoked, the handler gets passed one argument:
+	##                 P_KEYB_EVENT: An input event of category :keyboard.
+	##                 It should return _true if P_KEYB_EVENT is
+	##                 handled, _false otherwise 
+	.key_pressed_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.expand_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the end-user expands or
+	##                 collapses a display tree (either by clicking on the '+' or
+	##                 '-' on the gui or by using the plus,  minus, right arrow or
+	##                 left arrow keyboard keys).handler that is called when the
+	##                 When invoked, the handler gets passed three arguments:
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised.
+	##                 The handler must perform the expansion/compression itself.
+	##                 This is most easily achieved by sending
+	##                 default_handle_expand() to the tree_item's agent.
+	##                 The handler returns _true or false to indicate whether the
+	##                 event has been handled.
+
+	>> .expand_notifier << handler.check_type(p_new, .model)
+	
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.allow_dragging_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the
+	##                 end-user is dragging one (set of) display
+	##                 trees onto another one. This should return
+	##                 _true if dragging is fine, and _false if it is not allowed.
+	##                 When invoked, the handler gets passed the following arguments:
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_COL_INDEX: Index in the list of columns.
+	##                 P_SELECTION: Display tree selection which is
+	##                    the current set of selected trees, i.e. the ones that are
+	##                    being dragged onto P_TREE.
+	##                 P_EVENT: Event that has been raised.
+	##                 P_DEFAULT_MOUSE: Depending on modmask of P_EVENT:
+	##                    When just Ctrl or Shft are pressed, :copy is the default;
+	##                    For Alt or combinations, this is :link; and
+	##                    With no modifier, this defaults to :move.
+	##                 [P_FIRST_TIME?]: _true if this is the first
+	##                    time the dragging notifier is called for
+	##                    this drag operation. (This allows to setup caches).
+	##                 The allow-drag notifier should return:
+	##                 1) _true if P_TREE is a valid destination,
+	##                    _false otherwise
+	##                 2) Optionally a new P_DEFAULT_MOUSE.
+	.allow_dragging_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.toggle_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the
+	##                 end-user clicks on an image (or
+	##                 any other object that has been converted to one)
+	##                 inside the styled string.
+	##                 This image is used such that the user can
+	##                 *toggle* it.
+	##                 When invoked, the handler gets passed seven arguments:
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised
+	##                 P_VALUE: _unset, or the :index in the
+	##                    display_trees value if the text comes from a :value mark
+	##                 P_TEXT_STYLE: Which is always :resolved_image
+	##                 P_IMAGE: The image as it has been resolved
+	##                 P_DX, P_DY: Relative position in P_IMAGE
+	##                    (compared to P_TEXT top left being (0,0)
+	.toggle_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.release_dragging_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the
+	##                 end-user has dragged one (set of) display
+	##                 trees onto another one, and the 
+	##                 :allow_dragging_notifier has approved of this. 
+	##                 When invoked, the handler gets passed the following arguments:
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_COL_INDEX: Index in the list of columns.
+	##                 P_SELECTION: Display tree selection which is
+	##                    the current set of selected trees, i.e. the ones that are
+	##                    being dragged onto P_TREE.
+	##                 P_EVENT: Event that has been raised.
+	##                 P_DEFAULT_MOUSE: Depending on modmask of P_EVENT:
+	##                    When just Ctrl or Shft are pressed, :copy is the default;
+	##                    For Alt or combinations, this is :link; and
+	##                    With no modifier, this defaults to :move.
+	##                 [P_FIRST_TIME?]: _true if this is the first
+	##                    time the dragging notifier is called for
+	##                    this drag operation. (This allows to setup caches).
+	##                 The allow-drag notifier should return:
+	##                 1) _true if P_TREE is a valid destination,
+	##                    _false otherwise
+	##                 2) Optionally a new P_DEFAULT_MOUSE.
+	.release_dragging_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.click_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the user
+	##                 presses click on a display tree but not on
+	##                 an element in it; defaults to .handle_click().
+	##                 When invoked, the handler gets passed three arguments:
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised.
+	.click_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={external})
+_method tree_agent.image_click_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the
+	##                 end-user clicks on an image (or
+	##                 any other object that has been converted to one)
+	##                 inside the styled string.
+	##                 When invoked, the handler gets passed seven arguments:
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised
+	##                 P_VALUE: _unset, or the :index in the
+	##                    display_trees value if the text comes from a :value mark
+	##                 P_TEXT_STYLE: Which is always :resolved_image
+	##                 P_IMAGE: The image as it has been resolved
+	##                 P_DX, P_DY: Relative position in P_IMAGE
+	##                    (compared to P_TEXT top left being (0,0)
+	.image_click_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.text_click_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .The handlermodel, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the
+	##                 end-user clicks in a text string (or
+	##                 any other object that has been converted to one)
+	##                 inside the styled string.
+	##                 When invoked, the handler gets passed seven arguments:
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised
+	##                 P_VALUE: _unset, or the :index in the
+	##                    display_trees value if the text comes from a :value mark
+	##                 P_TEXT_STYLE: Text style with what
+	##                    P_TEXT has been drawn.
+	##                 P_TEXT: The text as it is in the parsed styled string
+	##                 P_DX, P_DY: Relative position in P_TEXT
+	##                    (compared to P_TEXT top left being (0,0)
+	.text_click_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.radio_toggle_notifier << p_new
+	## Parameters    : P_NEW: Either a symbol, being a method that
+	##                    is understood by self's .model, or
+	##                    a handler (of handler class).
+	## Returns       : P_NEW
+	## Function      : Set a handler that is called when the
+	##                 end-user clicks on an image (or
+	##                 any other object that has been converted to one)
+	##                 inside the styled string.
+	##                 This image is used such that the user can
+	##                 *radio_toggle* it.
+	##                 When invoked, the handler gets passed seven arguments:
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised
+	##                 P_VALUE: _unset, or the :index in the
+	##                    display_trees value if the text comes from a :value mark
+	##                 P_TEXT_STYLE: Which is always :resolved_image
+	##                 P_IMAGE: The image as it has been resolved
+	##                 P_DX, P_DY: Relative position in P_IMAGE
+	##                    (compared to P_TEXT top left being (0,0)
+	.radio_toggle_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_agent.handle_mouse_button_event(p_event)
+	## Parameters    : P_EVENT: Mouse event that has been raised,
+	##                    it must have its category = :button.
+	## Returns       : True if the event has been handled, false if
+	##                 it still needs handling
+	## Function      : Handle the mouse button event P_EVENT
+	## Note:           You can only catch middle_mouse_notifier if win32_window_system.mouse_buttons _is 3
+
+	_local l_id << p_event.id
+	_local (l_row, l_in_col_headings?, l_row_index, l_remainder) << .window.row_at(p_event.y)
+	# after correction, do the actual processing
+	_if (l_id _is :right)
+	_then
+		_if (p_event.func _is :press)
+		_then
+			_self.activate_right_mouse_menu(l_row, l_row_index, p_event, l_in_col_headings?)
+		_endif
+	_elif l_in_col_headings? 
+	_then
+		(l_renderer, l_remainder) << .window.int!col_renderer_at(l_remainder)
+		_local (l_handled?, l_action, _gather l_data) << l_renderer.handle_click(p_event.x, l_remainder, p_event, _self)
+		_local l_notifier << _self.notifier_for_action[l_action]
+		_if (l_notifier _isnt _unset)
+		_then
+			l_handled? << l_handled? _orif (_self.notify(l_notifier, l_row, l_row_index, p_event, _scatter l_data) _is _true)
+		_endif
+	_elif (l_row _is _unset)
+	_then
+		# tried to select something that isnt there
+		# ToDo: Check if we are extending the selection
+	_elif (l_id _is :left)
+	_then
+		_local l_func << p_event.func
+		_if (l_func _is :press)
+		_then
+			_try
+				_self.stop_edit()
+			_when cancel_selection_change
+				_return _true
+			_endtry
+		_endif
+		_if (l_func _is :press) _orif
+		    (l_func _is :double_press) _orif
+		    (l_func _is :release)
+		_then
+			# check if user is expanding/collapsing, etc.
+			_local l_tree_renderer << _self.tree_renderer
+			# set the display tree
+			l_tree_renderer.value_holder << l_row
+			_local (l_handled?, l_action, _gather l_data) << l_tree_renderer.handle_click(p_event.x, l_remainder, p_event, _self)
+			_local l_notifier << _self.notifier_for_action[l_action]
+			_if (l_notifier _isnt _unset)
+			_then
+				l_handled? << l_handled? _orif (_self.notify(l_notifier, l_row, l_row_index, p_event, _scatter l_data) _is _true)
+			_endif
+			_if (l_handled? _is _true)
+			_then
+				# ToDo: Improve this: we only need to redraw some rows
+				_self.damaged(_unset)
+			_endif
+		_elif (l_func _is :double_release)
+		_then
+			_self.notify(:double_click_notifier, l_row, l_row_index, p_event, _self.selection)
+		_endif
+	_elif (l_id _is :middle)
+	_then
+		_self.notify(:middle_mouse_notifier, l_row, l_row_index, p_event)
+	_endif
+	_return _true 
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_agent.editors
+	## Parameters    : - 
+	## Returns       : Property list containing <value_id>s as
+	##                 keys, and instantiated in-place-editors as values.
+	## Function      : This provides editors to the
+	##                 .default_editor_required() function.
+	_if ((l_eds << .editors) _is _unset)
+	_then
+		l_eds << .editors << property_list.new()
+	_endif
+	>> l_eds
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_agent.stop_edit(_optional p_allow_recovery?, p_raise_condition?, destroying?)
+	##
+	## If we're editing, stop the edit and hide the edit controls
+	##
+	## If P_ALLOW_RECOVERY? is _true (default) then - if error
+	## conditions are raised during the stopping of the actually
+	## editor - the editing will *not* stop. However, if this is
+	## set to _false - e.g. when the whole dialog is closed -
+	## editing really should stop and no recovery may take place.
+	##
+	## This is very useful if an editor does not want to accept a
+	## certain value. Editing should continue rather than that the
+	## end-user gets focused on something else.
+	##
+	## If an user-error occurs - currently edited value is not ok -
+	## and P_ALLOW_RECOVERY?, than a alert is shown with that error
+	## in a message, and the condition :cancel_selection_change is
+	## raised. P_ALLOW_RECOVERY? defaults to P_ALLOW_RECOVERY?.
+	##
+	_if ((l_em << .edit_manager) _isnt _unset) _andif l_em.editing?
+	_then
+		_local (l_vh, l_ri, l_vi) << (l_em.value_holder, l_em.value_info, l_em.value_id)
+		_if (l_stopped? << l_em.stop_edit(p_allow_recovery?, p_raise_condition?, destroying?))
+		_then
+			# notify
+			_self.notify(:edit_stop_notifier, l_vh, l_ri, l_vi, l_em)
+		_endif
+	   _endif
+	>> l_stopped?.default(_false) 
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_agent.default_editor_required(p_tree, p_row_index, p_value_id)
+	## Parameters    : P_TREE: Tree that is selected
+	##                 P_ROW_INDEX: Row on which P_TREE appears
+	##                 P_VALUE_ID: Id of the value in P_TREE for
+	##                    which an editor is required.
+	## Returns       : An editor that is suitable for P_VALUE_ID,
+	##                 or _unset if none can be found.
+	## Function      : Check editors whether it contains P_VALUE_ID.
+	>> _self.editors[p_value_id]
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.int!caret_pos(p_text, p_font, p_dx)
+	##
+	## Compute which character of P_TEXT occupies the pixel given
+	## by the horizontal offset P_DX when P_TEXT is displayed using
+	## P_FONT.
+	##
+	_local l_caret_pos << 0
+	_local l_checked_width << p_dx
+	_for i_char _over p_text.fast_elements()
+	_loop
+		# check next character
+		_local l_char_width << p_font.string_width(i_char)
+		_if (l_char_width _div 2) > l_checked_width
+		_then
+			_leave
+		_endif 
+		l_checked_width -<< l_char_width
+		l_caret_pos +<< 1
+	_endloop
+	>> l_caret_pos
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.value_changed_notifier << p_new
+	## P_NEW is a handler that is called when the
+	## end-user has changed a value in an in-place editor and this
+	## is about to be set to the value-holder (display_tree).
+	## When invoked, the handler gets passed five arguments:
+	## P_TREE: Display tree whose value is changed
+	## P_VALUE_ID: Id following :value in the styled string,
+	##    identifying the value that we want to edit.
+	## P_NEW_VALUE: The new value that we are about to set.
+	## P_UNDO_VALUE: Value that used to be there at the start of
+	##    this edit action.
+	## P_EDITOR: The editor that made the change
+	.value_changed_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.handle_value_release_click(p_tree, p_row_index, p_event, p_value, p_text_style, p_text, p_dx, p_dy, p_width, p_height)
+	## Parameters    : P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised
+	##                 P_VALUE: _unset, or the :index in the
+	##                    display_trees value if the text comes from a :value mark
+	##                 P_TEXT_STYLE: Text styled used for depicting
+	##                    a text, or :resolved_image in case P_TEXT concerned an image.
+	##                 P_TEXT: The text as it is retrieved from P_TREE.value(P_VALUE)
+	##                 P_DX, P_DY: Relative position in P_TEXT
+	##                    (compared to P_TEXT top left being (0,0)
+	##                 P_WIDTH, P_HEIGHT: Of the item that has been
+	##                    clicked on.
+	## Returns       : - 
+	## Function      :
+	# check if we have a way to obtain an editor
+	_if ((l_editor_req << _self.editor_required_notifier) _is _unset)
+	_then
+		_return
+	_endif
+	# check if we are will immediately start editing
+	_if _not .edit_on_click?
+	_then
+		_if (.int!override_data _is _unset) _orif (.int!override_data.an_element() _isnt :selection_click_with_no_change)
+		_then
+			# the user changed the selection with this click, so we do not
+			# want to start editing now. If the user want to start editing,
+			# (s)he should click *in* the selection.
+			_return 
+		_endif
+	_endif
+	# check if we need to leave the current edit session
+	# if we are still editing (while have gained focus already) and
+	# we should not (since we are not 'always' editing) then we
+	# just had a problem leaving the current editing session.
+	# In that case, do not start another one!
+	_if _self.editing? _andif _not (_self.edit_always_on?)
+	_then
+		_return 
+	_endif
+	# invoke it
+	_local l_editor << l_editor_req.invoke(p_tree, p_row_index, p_value, _self)
+	_if (l_editor _isnt _unset)
+	_then
+		# check if the value we're editing is an image
+		_local l_val_left << (p_event.x - p_dx)
+		_local l_val_right << (l_val_left + p_width)
+		_local l_click_pos << _if (p_text_style _isnt :resolved_image)
+				      _then
+					      >> _self.int!caret_pos(p_text, p_text_style.font, p_dx)
+				      _else
+					      p_text_style << _self.style_holder.default_style
+					      >> -1
+				      _endif 
+		# get cell dimensions # FIXME: does not work for merged cells
+		_local (l_left, l_top, l_right, l_bottom, l_align) << .window.cell_info_at(p_event.x, p_event.y)
+		(l_found?, l_left, l_top, l_right, l_bottom) << .window.check_bounds(l_left, l_top, l_right, l_bottom)
+		_if (_not l_found?) _then _return _endif 
+		# user clicked on the value directly, so set focus
+		_local l_focus? << _true 
+		_self.start_edit(p_tree, p_row_index, p_value, l_editor, p_text_style, l_click_pos,
+				 l_left, l_top, l_right, l_bottom, l_val_left, l_val_right, l_align, l_focus?)
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.editor_required_notifier << p_new
+	## P_NEW is a handler that is called when the
+	## end-user has pressed :f2 or clicked on a :value.
+	## This should return an instantiated editor with its
+	## properties set fine to start editing P_VALUE_ID fo P_TREE.
+	## If nothing is returned, the value will not be edited.
+	## When invoked, the handler gets passed four arguments:
+	## P_TREE: Display tree that has been clicked on (unset
+	##    if it is in the column headings or below
+	##    the last one)
+	## P_ROW_INDEX: Index in the list of visible
+	##    display trees.
+	## P_VALUE_ID: Id following :value in the styled string,
+	##    identifying the value that we want to edit.
+	## P_AGENT: Tree agent (self) that should be made the agent of
+	## any editor that will be returned by this notifier.
+	.editor_required_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_agent.edit_manager
+	##
+	## Returns the in place edit manager
+	##
+	## Note that this should only be called once the .window slot
+	## has been initialised.
+	## 
+	_if ((l_em << .edit_manager) _is _unset)
+	_then
+		l_em << .edit_manager << in_place_edit_manager.new(_self.window)
+	_endif
+	>> l_em
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.handle_release_click(p_tree, p_row_index, p_event)
+	##
+	## An action to start editing an editable value in the vicinity
+	## of a click (if there is one).
+	##
+	## Parameters    : P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised
+	##
+	
+	# we should not do a toggle or the like, and have exactly one
+	_if (p_event.modmask _isnt 0) _orif (_not _self.selection.precisely_one_selected?)
+	_then
+		_return
+	_endif
+	# check if we have a way to obtain an editor, and if we to edit on click
+	_if ((l_editor_req << _self.editor_required_notifier) _is _unset) _orif _not _self.edit_on_click?
+	_then
+		_return
+	_endif
+	# check if we need to leave the current edit session
+	# if we are still editing (while have gained focus already) and
+	# we should not (since we are not 'always' editing) then we
+	# just had a problem leaving the current editing session.
+	# In that case, do not start another one!
+	_if _self.editing? _andif _not (_self.edit_always_on?)
+	_then
+		_return 
+	_endif
+	# only when user did not click *on* value, but before or after
+	_local (l_found?, l_value_id, l_editor, l_text_style, l_val_left, l_val_right, l_col, l_end_col, l_edit_at_end?) <<
+		.window.int!editable_value_at(p_event.x, p_event.y, p_tree, p_row_index, l_editor_req)
+	_if l_found?
+	_then
+		_local l_click_pos << _if l_edit_at_end? _then >> 1000 _else >> -1 _endif
+		# get cell dimensions
+		_local (l_left, l_top, l_right, l_bottom, l_align) << .window.cell_info(p_tree, p_row_index, l_col, l_end_col)
+		# normally, if a user clicked in a cell, the dimensions would
+		# be ok; however check, just in case only a few pixels are visible
+		(l_found?, l_left, l_top, l_right, l_bottom) << .window.check_bounds(l_left, l_top, l_right, l_bottom)
+		_if (_not l_found?) _then _return _endif 
+		# user clicked next to value directly, so only set focus if we
+		# are not in an always edit mode (in which case, starting to
+		# type has the same effect whether or not the first text item
+		# has focus: it will whipe out what is there)
+		_local l_focus? << (_not _self.edit_always_on?)
+		_self.start_edit(p_tree, p_row_index, l_value_id, l_editor, l_text_style, l_click_pos,
+				 l_left, l_top, l_right, l_bottom, l_val_left, l_val_right, l_align, l_focus?)
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.edit_stop_notifier << p_new
+	## P_NEW is a handler that is called when the
+	## end-user stops editing a value, just after the edit
+	## controls are hidden.
+	## (There may be a programmatic cause to this).
+	## When invoked, the handler gets passed five arguments:
+	## P_TREE: Display tree that has been clicked on (unset
+	##    if it is in the column headings or below
+	##    the last one)
+	## P_ROW_INDEX: Index in the list of visible
+	##    display trees.
+	## P_VALUE_ID: Id following :value in the styled string,
+	##    identifying the value that we want to edit.
+	## P_EDITOR: The editor that will be used.
+	## P_EDIT_MANAGER: The manager that takes care of the resources.
+	.edit_stop_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_agent.editing?
+	##
+	## Return _true if an in-place editor is shown, editing a value;
+	## _false otherwise.
+	## 
+	>> _if ((l_em << .edit_manager) _isnt _unset)
+	   _then >> l_em.editing?
+	   _else >> _false 
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_agent.start_edit(p_tree, p_row_index, p_value_id, p_editor, p_text_style, p_click_pos,
+			      p_left, p_top, p_right, p_bottom, p_val_left, p_val_right, p_align, p_focus?)
+	## Parameters    : P_TREE: Display tree that will be edited.
+	##                 P_ROW_INDEX: Row on which is displayed.
+	##                 P_VALUE_ID: Value of P_TREE that will be edited.
+	##                 P_EDITOR: is an instantiated in-place editor
+	##                    subclass. Its properties should have been
+	##                    set ok before calling this function.
+	##                 P_TEXT_STYLE: Text style to be used
+	##                 P_CLICK_POS: is the character position at
+	##                    which the user clicked in the text. -1
+	##                    denotes that all text should be selected.
+	##                 P_LEFT, P_TOP, P_RIGHT, P_BOTTOM: Bounds of
+	##                    cell in which editing should take place.
+	##                 P_VAL_LEFT and P_VAL_RIGHT give the positions 
+	##                    of the left and right edge of the value.
+	##                 P_ALIGN: Align used to draw the current value,
+	##                    i.e. :left, :centre or :right.
+	##                 P_FOCUS?: Whether or not the in-place-editor
+	##                    should get focus or not.
+	## Returns       : 
+	## Function      : Build the GUI to edit the value ID P_VALUE_ID 
+	##                 provided by the display_tree P_TREE on row P_ROW_INDEX,
+	##                 and starting editing it using P_EDITOR.
+	# check if we are already editing with this info
+	_local l_em << _self.edit_manager
+	_if l_em.editing?(p_tree, p_value_id)
+	_then
+		# set focus if necessary
+		_if p_focus?
+		_then
+			l_em.set_focus(p_click_pos)
+		_endif
+		_return 
+	_endif
+	# provide all date to edit manager and display controls
+	l_em.start_edit(p_tree, p_row_index, p_value_id, p_editor, p_text_style, p_click_pos,
+			p_left, p_top, p_right, p_bottom, p_val_left, p_val_right, p_align, p_focus?)
+	# notify
+	_self.notify(:edit_start_notifier, p_tree, p_row_index, p_value_id, p_editor, l_em)
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_agent.default_handle_edit(p_tree, p_start_row, p_keyb_event, p_selection)
+	##
+	## Activate the edit GUI for the next editable value in the row;
+	## we'll look for the next editable value in P_TREE.
+	## (We have remembered the previous one we've edited).
+	##
+	## P_TREE is the display tree for the current row.
+	## P_START_ROW is the row index.
+	## P_KEYB_EVENT is the keyboard event which triggered this action.
+	## P_SELECTION is the current selection.
+	##
+	# check if we have a way to obtain an editor
+	_if ((l_editor_req << _self.editor_required_notifier) _is _unset)
+	_then
+		_return _false 
+	_endif
+	# check the selection
+	_local (l_found?, l_value_id, l_editor, l_text_style, l_val_left, l_val_right, l_column_no, l_column_end_no) <<
+		.window.int!next_editable_value(p_tree, p_start_row, .last_edited_value, l_editor_req)
+	_if l_found?
+	_then
+		
+		_local  (l_left, l_top, l_right, l_bottom, l_align) << .window.cell_info(p_tree, p_start_row, l_column_no, l_column_end_no)
+		(l_found?, l_left, l_top, l_right, l_bottom) << .window.check_bounds(l_left, l_top, l_right, l_bottom)
+		_if (_not l_found?) _then _return _false _endif 
+		# edit at end
+		_local l_caret_pos << -1
+		# user clicked next to value directly, so only set focus if we
+		# are not in an always edit mode (in which case, starting to
+		# type has the same effect whether or not the first text item
+		# has focus: it will whipe out what is there)
+		_local l_focus? << (_not _self.edit_always_on?)
+		_self.start_edit(p_tree, p_start_row, l_value_id, l_editor, l_text_style, l_caret_pos,
+				 l_left, l_top, l_right, l_bottom, l_val_left, l_val_right, l_align, l_focus?)
+		.last_edited_value << l_value_id
+	_endif
+	>> l_found?
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.edit_start_notifier << p_new
+	## P_NEW is a handler that is called when the
+	## end-user starts editing a value, just before the edit
+	## controls are shown.
+	## When invoked, the handler gets passed five arguments:
+	## P_TREE: Display tree that has been clicked on (unset
+	##    if it is in the column headings or below
+	##    the last one)
+	## P_ROW_INDEX: Index in the list of visible
+	##    display trees.
+	## P_VALUE_ID: Id following :value in the styled string,
+	##    identifying the value that we want to edit.
+	## P_EDITOR: The editor that will be used.
+	## P_EDIT_MANAGER: The manager that takes care of the resources.
+	.edit_start_notifier << handler.check_type(p_new, .model)
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_agent.int!edit_data
+	##
+	## Returns a property_list for holding editor related data
+	## 
+	>> .int!inline_editor_data
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_agent.editors << p_new
+	## Parameters    : P_NEW: Collection containing definitions to
+	##                    create in-place-editors, in the format:
+	##                 <Value_id>: id following :value in styled-string.
+	##                 <Editor_class>: Exemplar to send .new(<agent>, <key-vals>) method to.
+	##                 <Key-value> pairs: List of key-vals that will
+	##                    be passed to the new method.
+	## Returns       : P_NEW
+	## Function      : Set editors to be used by .default_editor_required() function.
+	##                 This can be passed as :editors, P_NEW to the
+	##                 tree-item.new methods.
+	_local l_evs << _self.editors.empty()
+	_for i_editor_for_value_data _over p_new.fast_elements()
+	_loop
+		_local (l_value_id, l_editor_class, _gather p_data) << (_scatter i_editor_for_value_data)
+		l_evs[l_value_id] << l_editor_class.new(_self, _scatter p_data)
+	_endloop
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.set_default_cursor()
+	## Parameters    : -
+	## Returns       : -
+	## Function      : Set self's window cursor to self's window's
+	##                 parent cursor, so it will correctly display
+	##                 the state of the model again.
+	## Methodology   : This is done by settings self's cursor to
+	##                 unset, such that it no longer overrides the
+	##                 cursor set on the window's parent (e.g. a frame)
+	.window.cursor << _unset 
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_private _method tree_agent.int!locate_drag_handlers(p_event, p_default_mouse)
+	## Parameters    : P_EVENT: Event that needs to be analysed for dragging:
+	##                    Is it a valid drag?
+	##                    Is it in one of self's drag destinations?
+	##                 P_DEFAULT_MOUSE: The default mouse action
+	##                    for the event. If not provided, this will
+	##                    be a :link action if we press Alt or several modifiers;
+	##                    it will be :copy if we press Ctrl, and
+	##                    it default to the :move action.
+	##                    The allow-drag notifier should return
+	##                    _true for valid dragging, and optionally may override this
+	##                    default mouse action. If _true has been returned,
+	##                    P_DEFAULT_MOUSE will be used to set self's mouse cursor,
+	##                    thus providing feedback to the end-user about the result of
+	##                    his/her drag operation.
+	## Returns       : 1) Found notifiers, this is a vector of the
+	##                    allow-drag and release-drag notifiers.
+	##                 2) Vector with arguments for notifiers
+	## Function      :
+	# check if there is anything to drag
+	_if (l_sel << _self.selection).empty? _then _return _endif
+	# check if we are allowed to drag the selection onto this tree
+	_local l_first_time? << (p_default_mouse _is _unset)
+	# Always set the 'default mouse' to be a symbol based on the
+	# latest state of the modifier keys
+	p_default_mouse << _if (p_event.modmask >= 3)
+			   _then >> :link
+			   _elif (p_event.modmask = 2)
+			   _then >> :copy
+			   _else >> :move
+			   _endif
+	# check if we are inside our own bounds, or we have to check our drag destinations
+	_local l_window << _self.window
+	_local l_x << p_event.x - l_window.horizontal_position
+	_local l_y << p_event.y - l_window.vertical_position
+	_if (l_x.in_range?(0, l_window.width) _andif l_y.in_range?(0, l_window.height))
+	_then
+		# check if we have dragged onto a tree
+		_local (l_tree, l_in_col_headings?, l_row_index, l_remainder) << .window.row_at(p_event.y)
+		_if (l_tree _isnt _unset) _andif ((l_allowh << _self.allow_dragging_notifier) _isnt _unset) _andif
+		    ((l_releaseh << _self.release_dragging_notifier) _isnt _unset)
+		_then
+			_return {l_allowh, l_releaseh}, {l_tree, l_row_index, _self.column_at(p_event.x), l_sel, p_event, p_default_mouse, l_first_time?}
+		_endif
+	_elif (.int!drag_to_agents _isnt _unset)
+	_then
+		(l_x, l_y) << l_window.actual.translate_coords(l_x, l_y)
+		_for i_agent, i_notifiers _over .int!drag_to_agents.fast_keys_and_elements()
+		_loop
+			_local l_dwindow << i_agent.window
+			_if _not l_dwindow.realised? _then _continue _endif
+			# get position of destination
+			_local (l_dx, l_dy) << l_dwindow.actual.translate_coords(0, 0)
+			(l_dx, l_dy) << (l_x - l_dx, l_y - l_dy)
+			_if l_dx.in_range?(0, l_dwindow.width) _andif l_dy.in_range?(0, l_dwindow.height)
+			_then
+				p_event.x << l_dx +<< l_dwindow.horizontal_position
+				p_event.y << l_dy +<< l_dwindow.vertical_position
+				_local (l_tree, l_in_col_headings?, l_row_index, l_remainder) << l_dwindow.row_at(l_dy)
+				_return i_notifiers, {l_window, l_tree, l_row_index, i_agent.column_at(l_dx), l_sel, p_event, p_default_mouse, l_first_time?}
+			_endif
+		_endloop
+	_endif 
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={subclassable})
+_method tree_agent.int!add_drag_to_agent(p_agent, p_release_drag_notifier, p_allow_drag_notifier)
+	## Parameters    : P_AGENT: Another agent whose window is a
+	##                    valid destination for dragging that start from me.
+	##                 P_RELEASE_DRAG_NOTIFIER: Called when a
+	##                    selection has been dragged onto P_AGENT's
+	##                    window and is released, should implement
+	##                    the drag's action.
+	##                 P_ALLOW_DRAG_NOTIFIER: Called when a
+	##                    selection is being dragged onto P_AGENT's window,
+	##                    should return whether that is allowed or not.
+	## Returns       : - 
+	## Function      : Store drag destination; if the current
+	##                 drag-notifier is :notify_default_select_dragging(),
+	##                 (which allows selecting by dragging)
+	##                 this will be replaced by :notify_default_dragging(),
+	##                 which allows dragging of the selection.
+	_if ((l_drag_tos << .int!drag_to_agents) _is _unset)
+	_then
+		l_drag_tos << .int!drag_to_agents << weak_hash_table.new()
+		_if .drag_notifier.sys!slot(:method_and_args) _is :|notify_default_select_dragging()|
+		_then
+			.drag_notifier << handler.new(_self, :|notify_default_dragging()|)
+		_endif
+	_endif
+	# add...
+	l_drag_tos[p_agent] << {p_allow_drag_notifier, p_release_drag_notifier}
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={subclassable})
+_method tree_agent.register_drag_source(p_agent, p_release_drag_notifier, _optional p_allow_drag_notifier)
+	## Parameters    : P_AGENT: Another tree-agent whose window is a
+	##                    valid source to start dragging from to myself.
+	##                 P_RELEASE_DRAG_NOTIFIER: Notifier that is called
+	##                 [P_ALLOW_DRAG_NOTIFIER]: Default to always allowing.
+	## Returns       : -
+	## Function      : Registers P_AGENT's window as a valid control to
+	##                 start dragging from to _self. If dragging
+	##                 from P_AGENT's window onto _self is taking place,
+	##                 P_ALLOW_DRAG_NOTIFIER is called to ask if
+	##                 this is a valid drag position. When the dragging ends,
+	##                 P_RELEASE_DRAG_NOTIFIER is called to denote
+	##                 the end of the drag operation and allows the API to
+	##                 carry out the underlying behaviour.
+	## Use:            The allow-drag and release-drag notifiers
+	##                 are called with the following parameters:
+	##                 P_SOURCE: Tree-item (window of agent) that
+	##                    we are currently dragging on.
+	##                 P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_COL_INDEX: Index in the list of columns.
+	##                 P_SELECTION: Display tree selection which is
+	##                    the current set of selected trees, i.e. the ones that are
+	##                    being dragged onto P_TREE.
+	##                 P_EVENT: Event that has been raised.
+	##                 P_DEFAULT_MOUSE: Depending on modmask of P_EVENT:
+	##                    When just Ctrl or Shft are pressed, :copy is the default;
+	##                    For Alt or combinations, this is :link; and
+	##                    With no modifier, this defaults to :move.
+	##                 [P_FIRST_TIME?]: _true if this is the first
+	##                    time the dragging notifier is called for
+	##                    this drag operation. (This allows to setup caches).
+	##                 The allow-drag notifier should return:
+	##                 1) _true if P_TREE is a valid destination,
+	##                    _false otherwise
+	##                 2) Optionally a new P_DEFAULT_MOUSE.
+	p_release_drag_notifier << handler.check_type(p_release_drag_notifier, .model)
+	p_allow_drag_notifier << _if (p_allow_drag_notifier _is _unset)
+				 _then >> _proc @ok () >> _true _endproc
+				 _else >> handler.check_type(p_allow_drag_notifier, .model)    
+				 _endif
+	p_agent.int!add_drag_to_agent(_self, p_release_drag_notifier, p_allow_drag_notifier)
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.config_change()
+        ## An event handler for a window config_change event.
+	## This check if we really changed size, and if so, it invokes
+	## the resized() method on the window and returns the result:
+	## _true if this will cause a damaged event,
+	## _false otherwise
+	_local l_window << .window, l_result << _false 
+	_if ((l_window.height <> .int!cached_height) _orif (l_window.width <> .int!cached_width))
+	_then
+		l_result << _super.config_change()
+		# may be we have just changed size again, store latest data...
+		.int!cached_width << l_window.width
+		.int!cached_height << l_window.height
+	_endif
+	>> l_result
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={external})
+_method tree_agent.editor_required_notifier
+	## A handler that is called when the
+	## end-user has pressed :f2 or clicked on a :value.
+	## This should return an instantiated editor with its
+	## properties set fine to start editing P_VALUE_ID fo P_TREE.
+	## If nothing is returned, the value will not be edited.
+	## When invoked, the handler gets passed four arguments:
+	## P_TREE: Display tree that has been clicked on (unset
+	##    if it is in the column headings or below
+	##    the last one)
+	## P_ROW_INDEX: Index in the list of visible
+	##    display trees.
+	## P_VALUE_ID: Id following :value in the styled string,
+	##    identifying the value that we want to edit.
+	## P_AGENT: Tree agent (self) that should be made the agent of
+	## any editor that will be returned by this notifier.
+	##
+	## Note that if the windows-system does not allow in-place
+	## editing, it does not make sense to ask for an
+	## in-place-editor, and therefore this notifier will return
+	## _unset in those case.
+	>> _if !window_system!.int!canvas_is_container?
+	   _then >> .editor_required_notifier
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.default_handle_expand(p_tree, p_row_index, p_event)
+	##
+	## Parameters    : P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised.
+	##
+
+	_local l_canvas << .window
+
+	# Redraw
+	# (It is not a problem to give an area that goes beyond the
+	# visible area)
+	_self.damaged( pixel_bounding_box.new_with_size( l_x << l_canvas.horizontal_position,
+							 l_y << l_canvas.int!ypos_for(p_row_index),
+							 l_x + l_canvas.width,
+							 l_y + l_canvas.height ) )
+	
+	# Make sure the new trees are visible, as far down as necessary
+	l_canvas.ensure_row_visibility( p_row_index, p_row_index + p_tree.int!nr_expanded_subtrees )  
+
+	# We have done a redraw already, we do not want a complete
+	# damaged event
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_agent.int!cancel_selection_change(p_event, p_agent)
+	## Parameters    : P_EVENT: Event that has been raised.
+	##                 P_AGENT: The agent that is handling events
+	##                    for the window of P_EVENT.
+	## Returns       : _true if the event has been handled, _false otherwise
+	## Function      : Check by invoking :allow_dragging_notifier
+	## 
+	##
+	# we're waiting for the corresponding mouse up event
+	_if ((l_func << p_event.func) _is :release) _orif (l_func _is :double_release)
+	_then
+		.int!override_handler << _unset
+	_endif
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={internal})
+_method tree_agent.check_always_edit()
+	## Parameters    : -
+	## Returns       : -
+	## Function      : If edit_always_on? is _true, and something
+	##                 editable is selected, make sure that it is edited.
+	##                 Otherwise, cancel the current editing, but
+	##                 possibly recovering from pending input
+	##                 errors if the current selection is appropriate.
+	_if _self.edit_always_on? _andif (_not (l_selection << _self.selection).empty?) _andif
+	    ((l_tree << l_selection.start_tree) _isnt _unset)
+	_then
+		# start editing the new selection
+		_if _not _self.default_handle_edit(l_tree, l_selection.start_row, _unset, l_selection)
+		_then
+			# if we cannot edit the current selection, then at least stop
+			# editing what is not selected anymore
+			_self.stop_edit(_false, _false)
+		_endif 
+	_else
+		# if we do not complete the current editing, allow recovery
+		_self.stop_edit(_true, _false)
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={internal})
+_method tree_agent.always_edit_handle_keypress(p_keyb_event)
+	## Parameters    : P_KEYB_EVENT: An input event of category :keyboard.
+	## Returns       : -
+	## Function      : Implement special keyboard processing
+	##                 behaviour that is appropriate for when
+	##                 :edit_always_on? is _true, i.e. copy, cut,
+	##                 paste behaviour and normal characters will
+	##                 start editing (and overriding) the currently
+	##                 edited value. 
+	# check if we can do something ourselves with this keypress
+	_local l_char << p_keyb_event.id, l_char? << l_char.is_class_of?(character)
+	_if (p_keyb_event.modmask _is 2) 
+	_then
+		_if (l_char _is character.prop!name_to_char[:etx])
+		_then
+			# user pressed Ctrl-C
+			_self.edit_manager.copy()
+		_elif (l_char _is character.prop!name_to_char[:can])
+		_then
+			# user pressed Ctrl-X
+			_self.edit_manager.cut(p_keyb_event)
+		_elif (l_char _is character.prop!name_to_char[:syn])
+		_then
+			# user pressed Ctrl-V
+			_self.edit_manager.paste(p_keyb_event)
+		_elif (l_char _is character.prop!name_to_char[:soh])
+		_then
+			# user pressed Ctrl-A
+			_self.edit_manager.set_focus(-1)
+		_endif
+	_elif l_char? _andif _not l_char.control?
+	_then
+		_self.edit_manager.set_focus(1, write_string(l_char), p_keyb_event)
+	_elif (p_keyb_event.id _is :f2)
+	_then
+		_self.edit_manager.set_focus(-1)
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={internal})
+_method tree_agent.check_edit_position( _optional allow_recovery? )
+        ##
+	## Parameters    : - ALLOW_RECOVERY? - whether to allow editing
+	## to continue if edit position is no longer valid. Defaults to
+	## false. 
+        ##
+	## Returns       : -
+	## Function      : If we are editing, check if the position of
+	##                 the current in-place-editor is still ok.
+	##                 If we are not editing, check if we should by
+	##                 calling .check_always_edit()
+        
+	_if _self.editing?
+	_then
+		(l_tree, l_row, l_value_id) << _self.edit_manager.editing_value_info
+                
+		# check whether new position is still visible
+		(l_found?, l_value_id, l_editor, l_text_style, l_val_left, l_val_right, l_column_no, l_column_end_no) <<
+			.window.int!next_editable_value(l_tree, l_row, l_value_id, _self.editor_required_notifier, _false)
+		_if l_found?
+		_then
+			(l_left, l_top, l_right, l_bottom) << .window.cell_info(l_tree, l_row,
+                                                                                l_column_no, l_column_end_no)
+                        
+			(l_found?, l_left, l_top, l_right, l_bottom) << .window.check_bounds(l_left, l_top,
+                                                                                             l_right, l_bottom)
+			_if _not l_found?
+			_then
+                                _self.stop_edit( allow_recovery? _is _true, _false)
+				_return
+			_endif
+			_self.edit_manager.check_edit_position(l_left, l_top, l_right, l_bottom, l_val_left, l_val_right)
+		_else
+			# If we can't find a value to edit then we can't allow recovery
+                        _self.stop_edit( allow_recovery? _is _true, _false)
+		_endif
+	_else
+		_self.check_always_edit()
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=advanced)
+_method tree_agent.edit_always_on? << p_new
+	## If P_NEW is true, than when there is a selection, and this selection
+	## contains an editable value, this will be in-place-edited immediately.
+	## Focus will be retained by the canvas, or given to the in-place-editor
+	## if the end-user clicked on the editable value.
+	## If P_NEW is false, editing only starts when the end-user clicks in
+	## the corresponding cell, or on the editable value, or presses F2.
+	.edit_always_on? << p_new
+	# now enable the callback of Alt-Down keystroke
+	.window.enable_system_key_events()
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_agent.handle_visibility_notification(visible?)
+	##
+	## The window visibility has changed.
+	##
+
+	_if _not visible?
+	_then
+		# Stop editing unless the window's top_frame exists and is visible
+		tf << .window.top_frame
+		_if _not (tf _isnt _unset _andif tf.realised? _andif tf.actual.is_mapped?)
+		_then
+			_self.stop_edit(_false,_false)
+		_endif
+	_else
+		_if _not _self.editing?
+		_then
+			_self.check_always_edit()
+		_endif
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={subclassable})
+_method tree_agent.handle_text_release_click(p_tree, p_row_index, p_event, p_value, p_text_style, p_text, p_dx, p_dy, p_width, p_height)
+	## Parameters    : P_TREE: Display tree that has been clicked on (unset
+	##                    if it is in the column headings or below
+	##                    the last one)
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised
+	##                 P_VALUE: _unset, or the :index in the
+	##                    display_trees value if the text comes from a :value mark
+	##                 P_TEXT_STYLE: Text styled used for depicting
+	##                    a text, or :resolved_image in case P_TEXT concerned an image.
+	##                 P_TEXT: The text as it is retrieved from P_TREE.value(P_VALUE)
+	##                 P_DX, P_DY: Relative position in P_TEXT
+	##                    (compared to P_TEXT top left being (0,0)
+	##                 P_WIDTH, P_HEIGHT: Of the item that has been
+	##                    clicked on.
+	## Returns       : - 
+	## Function      :
+_endmethod
+$
+
+_pragma(classify_level=advanced, usage={internal})
+_method tree_agent.sort_column( col_index )
+	## 
+	## Sorts the column with index COL_INDEX.
+
+	.window.cursor << mouse_cursor.standard_cursor(:busy)
+	_protect
+		# check if the pre-sort notifier handles the sorting
+		_if _self.notify( :pre_sort_notifier, col_index, .window ) _isnt _true
+		_then
+			# sort on this column
+			_self.headings_holder.sort()
+			# notify the sorting has been done
+			_self.notify( :sort_notifier, col_index, .window )
+		_endif
+	_protection
+		_self.set_default_cursor()
+	_endprotect	
+_endmethod
+$
+

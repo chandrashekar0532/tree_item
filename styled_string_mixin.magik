@@ -1,0 +1,728 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+# Author         : GE Smallworld (Ken Korsmit)
+# Date           : Oct/2001
+#
+## Provide an interface and parse functions
+## for formatted, styled elements. This can layout text and insert images
+## in a simple way. The following specifies how the display elements
+## will be treated:
+## 
+## Every object not a symbol will converted to strings with .write_on()
+## _unset : will ignored
+## Symbols will be treates as keywords or as parse_functions.
+## 
+## The following keywords can be used:
+## :tab : in tabular mode, tab to the next column; in document
+##    mode, indent 
+## :tab_left, :tab_right, :tab_centre : in tabular mode, tab to
+##    the next column and override the column alignment
+## :newline : in document mode, moves to the next line
+## :colon : add a ': ' if another element follows (specified in
+##    !current_locale![:styled_string_colon]) 
+## :sep : add a ', ' if another element follows (specified in
+##    !current_locale![:styled_string_sep])
+## :space : word add a space if another element follows
+## :no_space : no space is added before the next element text
+## :<style_name> : use the given text style; if the name is not
+##    a known text style but identifies a colour (such as
+##    :foreground, :black or :red) then create a text style to
+##    use the given colour. Symbols are always treated as
+##    style_names, if they arenot a keyword/function
+##
+## The following functions can be used (Each function takes
+## exactly 1 argument):
+## :image : next element gives an image scheme name, an image
+##    name or an image locator (that is, an image name and
+##    resource module name); a named image is accessed as a module
+##    or product resource, or as defined window system data
+## :value : next element identifies the value to display, for
+##    example by index number or property list key; if this is
+##    unset then the value is accessed directly with display_tree.value
+## :toggle : provides a box for the user to toggle a
+##    value; next element gives the index of the value or unset if
+##    the value is accessed directly with no index
+## :radio_toggle : the values of a display tree can be
+##    displayed as a set of radio toggles; when the radio toggle
+##    for one value is checked then the other values are set to
+##    false
+## :method : the next element is a vector {receiver, message,
+##    gather arguments}; sending message to receiver resturns a
+##    new styled string to be added at this position
+## :custom_draw : the next element is a custom draw renderer
+## :merge: denotes a cell merge, if followed by _unset all
+##    cells are merged, otherwise the number supplied denotes the
+##    amount of cells we want to merge 
+## :align : either takes just h_alignment which is :left/:centre/:right or 
+##    v_alignment being {:top/:centre/:bottom, [<h_alignment>]} 
+##    where h_alignment is also allowed to be unset
+## :move : either just takes horizontal displacement (added to
+##    the x-value, e.g. 5) or {<v_displacement>, [<h_displacement>]}
+##    added x- and y-value respectively.
+##
+## Usage         : Create a subclass, that implements (e.g. using slot accessors):
+##                  .int!styled_string
+##                  .int!styled_string<<
+def_mixin(:styled_string_mixin)
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_string_mixin.styled_string
+	## Parameters    : -
+	## Returns       : A validated and parsed simple_vector of styled string elements.
+	## Function      : Check if we have stored a handler instead,
+	##                 if so, invoked it and return the result.
+	>> _if handler.is_class_of?(l_value << _self.int!styled_string)
+	   _then
+		   # we want a safely evaluated procedure, therefore, start with an assign
+		   l_styled_string << _self.int!styled_string << rope.new()
+		   >> _self.parse_styled_string({:method, {l_value, :|invoke()|}}, l_styled_string).as_simple_vector()
+	   _elif (l_value _is _unset)
+	   _then
+		   # there is nothing...
+		   >> {}
+	   _else
+		   # has been parsed before
+		   >> l_value
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_string_mixin.styled_string << p_styled_string
+	## Parameters    : P_STYLED_STRING: Collection of styled string
+	##                    elements, or styled_string itself.
+	## Returns       : Parsed styled string or validated and parsed
+	##                 simple_vector of styled string elements. 
+	## Function      : Check if P_STYLED_STRING has self's class,
+	##                 if so, get's its .styled_string, otherwise, parse it.
+	_if _self.is_class_of?(p_styled_string)
+	_then
+		_return _self.int!styled_string << p_styled_string
+	_endif
+	>> _self.int!styled_string << _self.parse_styled_string(p_styled_string)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_string_mixin.lazy_styled_string << p_styled_string
+	## Parameters    : P_STYLED_STRING: Collection of styled string
+	##                    elements, or styled_string itself.
+	## Returns       : A handler
+	## Function      : Set a styled string that
+	##                 will only be parsed when needed (but may be
+	##                 done everytime it is needed).
+	# lazy evaluation
+	>> _self.int!styled_string << handler.new(p_styled_string, :yourself)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_string_mixin.set_styled_string_method(p_receiver, p_method, _gather p_args)
+	## Parameters    : P_RECEIVER: Object that understands P_METHOD
+	##                 P_METHOD: Will be send to P_RECEIVER with
+	##                    P_ARGS and needs to return a collection of styled string
+	##                    elements, or styled_string itself.
+	##                 {P_ARGS}
+	## Returns       : A handler
+	## Function      : Set a handler that will return a styled string that
+	##                 will only be parsed when needed (but may be
+	##                 done everytime it is needed).
+	_self.int!styled_string << handler.new(p_receiver, p_method, _scatter p_args)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+styled_string_mixin.define_shared_constant(:reserved_parse_word,
+	set.new_with(:tab, # tabs to the next column
+		     :tab_right, # idem, but overrides the column_alignment and aligns right
+		     :tab_left,  # idem, but overrides the column_alignment and aligns left
+		     :tab_centre, # idem, but overrides the column_alignment and aligns centre
+		     :newline, # denote we're going to the next line (same cell is depended whether we are in document layout or not)
+		     # ToDo: Dotted tabs (right?) (eyelines?)
+		     :colon, # adds a ':' but only if an element follows (used to be :sep in some systems)
+		     :sep, # adds a ',' but only if an element follows (see !current_locale!)
+		     :no_space, # no space will be added automatically between previous and next part
+		     :space, # force a space now
+		     # :black, # fetches the style stored under the name black
+		     # :navy, # fetches the style stored under the name navy (nice dark blue)
+		     :selection, # not used yet
+		     :start_selection, # not used yet
+		     :end_selection # not used yet
+	    ),
+	:private)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+styled_string_mixin.define_shared_constant(:defined_parse_functions, # they all have a single argument
+	set.new_with(:toggle, # boolean toggle, index of value (.value(x), _unset means no index (.value))
+		     :radio_toggle, # boolean toggle, index of value (.value(x), _unset means no index (.value))
+		                    # radio function, if there is an index, with other indices, if unset, with siblings
+		     :method, # returns a new styled string that needs to be parsed in at this position
+		              # the arguments are a {receiver, message, gather arguments}
+		     :custom_draw, # takes a custom draw renderer as an argument
+		     :image, # name of the icon scheme, if not found, name of the image
+		     :value, # run time evaluated with .writestring, index of value (.value(x), _unset means no index (.value))
+		     :merge, # denotes a cell merge, if followed by _unset all cells are merged, otherwise the number supplied denotes the amount of cells we want to merge
+		     :align, # either takes just h_alignment which is :left/:centre/:right or {:top/:centre/:bottom, [<h_alignment>]}
+		             # where h_alignment is also allowed to be unset
+		     :move   # either just takes horizontal displacement (added to the x-value, e.g. 5) or {<v_displacement>, [<h_displacement>]}
+	    ),
+	:private)
+$
+
+# ToDo: should be dependent on reading direction: should be equal to
+# the displacement of a space character with the default text style
+
+_pragma(classify_level=basic, topic={tree_item})
+# ToDo: should be dependent on reading direction: should be equal to
+# the displacement of a space character with the default text style
+## Specifies horizontal/vertical space that is skipped when a
+## space needs to be inserted between different functions
+## (e.g. between an image and a toggle)
+styled_string_mixin.define_shared_constant(:inter_function_displacement,
+	{5, 0},
+	:public)
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method styled_string_mixin.parse_styled_string(p_style_in, _optional p_style_out, l_last_char_is_space?, l_last_item_is_function?)
+	## Parameters    : P_STYLE_IN: Collection to be parsed into a
+	##                    valid styled string.
+	##                 [P_STYLE_OUT]: Rope, to which results will
+	##                    be written.
+	##                 [L_LAST_CHAR_IS_SPACE?]: Telling the last
+	##                    parsed element written to P_STYLE_OUT
+	##                    will require the next one to start with a
+	##                    space (e.g. between two words, as in HTM.) 
+	##                 [L_LAST_ITEM_IS_FUNCTION?]: Implying the
+	##                    first argument to be parsed has to merged in as a function.
+	## Returns       : P_STYLE_OUT, or a new rope if the former has
+	##                    not been specified.
+	## Function      : Parse and optimise a styled string.
+	##
+	## Every object not a symbol will converted to strings with .write_on()
+	## _unset : will ignored
+	## Symbols will be treates as keywords or as parse_functions.
+	## 
+	## The following keywords can be used:
+	## :tab : in tabular mode, tab to the next column; in document
+	##    mode, indent 
+	## :tab_left, :tab_right, :tab_centre : in tabular mode, tab to
+	##    the next column and override the column alignment
+	## :newline : in document mode, moves to the next line
+	## :colon : add a ': ' if another element follows (specified in
+	##    !current_locale![:styled_string_colon]) 
+	## :sep : add a ', ' if another element follows (specified in
+	##    !current_locale![:styled_string_sep])
+	## :space : word add a space if another element follows
+	## :no_space : no space is added before the next element text
+	## :<style_name> : use the given text style; if the name is not
+	##    a known text style but identifies a colour (such as
+	##    :foreground, :black or :red) then create a text style to
+	##    use the given colour. Symbols are always treated as
+	##    style_names, if they arenot a keyword/function
+	##
+	## The following functions can be used (Each function takes
+	## exactly 1 argument):
+	## :image : next element gives an image scheme name, an image
+	##    name or an image locator (that is, an image name and
+	##    resource module name); a named image is accessed as a module
+	##    or product resource, or as defined window system data
+	## :value : next element identifies the value to display, for
+	##    example by index number or property list key; if this is
+	##    unset then the value is accessed directly with display_tree.value
+	## :toggle : provides a box for the user to toggle a
+	##    value; next element gives the index of the value or unset if
+	##    the value is accessed directly with no index
+	## :radio_toggle : the values of a display tree can be
+	##    displayed as a set of radio toggles; when the radio toggle
+	##    for one value is checked then the other values are set to
+	##    false
+	## :method : the next element is a vector {receiver, message,
+	##    gather arguments}; sending message to receiver resturns a
+	##    new styled string to be added at this position
+	## :custom_draw : the next element is a custom draw renderer
+	## :merge: denotes a cell merge, if followed by _unset all
+	##    cells are merged, otherwise the number supplied denotes the
+	##    amount of cells we want to merge 
+	## :align : either takes just h_alignment which is :left/:centre/:right or 
+	##    v_alignment being {:top/:centre/:bottom, [<h_alignment>]} 
+	##    where h_alignment is also allowed to be unset
+	## :move : either just takes horizontal displacement (added to
+	##    the x-value, e.g. 5) or {<v_displacement>, [<h_displacement>]}
+	##    added x- and y-value respectively.
+	_if (p_style_out _is _unset)
+	_then
+		p_style_out << rope.new()
+	_endif
+	_local l_out_stream << internal_text_output_stream.new()
+	_local l_current_style << :foreground, l_style_written? << _true
+	l_last_char_is_space? << l_last_char_is_space?.default(_true)
+	l_last_item_is_function? << l_last_item_is_function?.default(_false)
+	_local l_reading_function << _unset
+	_local l_rest_output_helper << _proc @parse_styled_string_helper()
+					       _import p_style_out, l_current_style, l_out_stream, l_style_written?
+					       _local l_string_so_far << l_out_stream.string
+					       _if (_not l_string_so_far.empty?) _orif (_not l_style_written?)
+					       _then 
+						       p_style_out.add(l_current_style)
+						       p_style_out.add(l_string_so_far)
+						       l_out_stream.reset()
+						       l_style_written? << _true 
+					       _endif
+				       _endproc
+	_try
+		_with l_condition
+		_for i_element _over p_style_in.fast_elements()
+		_loop
+			# check if we are processing a function
+			_if (l_reading_function _isnt _unset)
+			_then
+				_if (l_reading_function _is :method)
+				_then
+					_local (l_generator_object, l_generator_method, _gather l_generator_args) << (_scatter i_element)
+					_local l_insert_style_string << l_generator_object.perform_with_vector(l_generator_method, l_generator_args)
+					(l_insert_style_string, l_last_char_is_space?, l_last_item_is_function?) << 
+					_self.parse_styled_string(l_insert_style_string, p_style_out, l_last_char_is_space?, l_last_item_is_function?)
+				_elif (l_reading_function _is :align)
+				_then
+					p_style_out.add(l_reading_function)
+					_local (l_v_align, l_h_align) << _if simple_vector.is_class_of?(i_element)
+									 _then >> (_scatter i_element)
+									 _else >> (_unset, i_element)
+									 _endif
+					p_style_out.add({l_h_align, l_v_align})
+				_elif (l_reading_function _is :move)
+				_then
+					p_style_out.add(l_reading_function)
+					_local (l_x_disp, l_y_disp) << _if simple_vector.is_class_of?(i_element)
+								       _then >> (_scatter i_element)
+								       _else >> (i_element, _unset)
+								       _endif
+					p_style_out.add({l_x_disp, l_y_disp})
+				_else 
+					p_style_out.add(l_reading_function)
+					p_style_out.add(i_element)
+				_endif
+				l_reading_function << _unset
+			_elif symbol.is_class_of?(i_element)
+			_then
+				_if (i_element _is :colon)
+				_then
+					l_out_stream.write(!current_locale![:styled_string_colon])
+					l_last_char_is_space? << _true 
+				_elif i_element _is :sep
+				_then
+					l_out_stream.write(!current_locale![:styled_string_sep])
+					l_last_char_is_space? << _true 
+				_elif i_element _is :no_space
+				_then
+					l_last_char_is_space? << _true
+					l_last_item_is_function? << _false 
+				_elif i_element _is :space
+				_then
+					l_out_stream.write(% )
+					l_last_char_is_space? << _true 
+				_elif (l_current_style _isnt i_element) 
+				_then 
+					# aparently we have a colour (or tab, or image)
+					l_rest_output_helper()
+					_if {:tab, :tab_right, :tab_left, :tab_centre}.includes?(i_element)
+					_then
+						l_last_char_is_space? << _true
+						l_last_item_is_function? << _false
+						p_style_out.add(_if (i_element.size >= 5) _then >> i_element.subseq(5) _endif)
+						p_style_out.add(tab_char)
+					_elif (:newline _is i_element)
+					_then
+						l_last_char_is_space? << _true
+						l_last_item_is_function? << _false
+						p_style_out.add(_true) # a hard CR
+						p_style_out.add(newline_char)
+					_elif _self.defined_parse_functions.includes?(i_element)
+					_then
+						l_reading_function << i_element
+						# check if a space would have been desired
+						_if {:move, :align, :merge}.includes?(i_element)
+						_then
+							l_last_item_is_function? << _false
+							l_last_char_is_space? << _true 
+						_else 
+							_if (_not l_last_char_is_space?)
+							_then
+								# we've just written the output
+								_local l_last
+								_if (_not p_style_out.empty?) _andif 
+								     (l_last << p_style_out.last).is_class_of?("")
+								_then
+									p_style_out[p_style_out.size] << (l_last + % )
+								_else
+									# we can not add this space to the value item, so add it as a single item
+									p_style_out.add(l_current_style)
+									p_style_out.add(" ")
+									l_style_written? << _true 
+								_endif
+							_elif l_last_item_is_function?
+							_then
+								p_style_out.add(:move)
+								p_style_out.add(_self.inter_function_displacement)
+							_endif 
+							# during parsing we do not know whether a value is going to
+							# yield a text or an image, but we just assume an image;
+							# therefore we tell to add a space
+							# if the api-user does not like this, (s)he can overrule this
+							# by using :no_space, :move instead.
+							l_last_char_is_space? << (i_element _isnt :value)
+							l_last_item_is_function? << (i_element _isnt :method)
+						_endif
+					_elif (l_current_style _isnt i_element)
+					_then 
+						# we detected a new style
+						l_current_style << i_element
+						l_style_written? << _false 
+					_endif 
+				_endif 
+			_elif (i_element _is _unset)
+			_then
+				# skip the unsets
+			_else
+				# elements are separated by spaces
+				_if _not (l_last_char_is_space? ^<< _false)
+				_then
+					% .write_on(l_out_stream)
+					l_last_item_is_function? << _false
+				_elif (l_last_item_is_function? ^<< _false)
+				_then
+					p_style_out.add(:move)
+					p_style_out.add(_self.inter_function_displacement)
+				_endif
+				i_element.write_on(l_out_stream)
+			_endif
+		_finally
+			l_rest_output_helper()
+		_endloop
+	_when error
+	      l_condition.report_contents_on(!output!)
+	      !traceback!(!output!)
+	      l_rest_output_helper()
+	      p_style_out.add(:red)
+	      p_style_out.add(l_condition.report_contents_string)
+	_endtry
+	>> (p_style_out, l_last_char_is_space?, l_last_item_is_function?)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_iter _method styled_string_mixin.fast_elements()
+	## Parameters    : -
+	## Returns       : Iterations of all the display elements that
+	##                 the styled string is made up from.
+	##                 Note that every piece of text (string) is preceded by
+	##                 its style name. Functions have to
+	##                 arguments. As a result, this will return
+	##                 alternating pairs.
+	## Function      : 
+	_for i_element _over _self.styled_string.fast_elements()
+	_loop
+		_loopbody (i_element)
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_iter _method styled_string_mixin.fast_elements_in_pairs()
+	# Author         : GE Smallworld (KenK)
+	# Date           : 04/1997
+	## Parameters    : -
+	## Returns       : Iterations of
+	##                 1) The text as it is currently known
+	##                    Also, this can be the parameter to a
+	##                    function as described in the class-comments.
+	##                 2) The name of the style it should be drawn in;
+	##                    Also, this can be a function as described
+	##                    in the class-comments.
+	## Function      : 
+	## Methodology   : Only pairs will be yielded
+	_local l_yield? << _true, l_skip_till_tab? << _false 
+	_for i_element _over _self.fast_elements()
+	_loop
+		_if (l_yield? << _not l_yield?)
+		_then
+			_if l_skip_till_tab? _andif (i_element _isnt tab_char)
+			_then
+				_continue 
+			_endif
+			l_skip_till_tab? << (_loopbody(i_element, l_first) _is _true)
+		_else
+			l_first << i_element
+		_endif
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method styled_string_mixin.as_simple_vector()
+	## Parameters    : -
+	## Returns       : A simple_vector containing copy of self's
+	##                 internal styled_string elements 
+	## Function      : 
+	>> _self.styled_string.copy()
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_string_mixin.for_scatter()
+	## Parameters    : -
+	## Returns       : Scattered , parsed elements of _self
+	## Function      : 
+	>> _self.styled_string.for_scatter()
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method styled_string_mixin.as_charvec(_optional p_column_nr, p_value_holder, p_style_holder)
+	## Parameters    : [P_COLUMN_NR]: If the styled_string contains
+	##                    tabs, P_COLUMN_NR may denote which part of it is wanted as a
+	##                    char vec.
+	##                 [P_VALUE_HOLDER]: If the styled_string
+	##                    contains value references, P_VALUE_HOLDER will be used to
+	##                    resolve those. (If a value reference is made, but no
+	##                    P_VALUE_HOLDER is specified, the index of the value will be
+	##                    listed instead between <>'s.)
+	##                 [P_STYLE_HOLDER]: Optional style-holder that
+	##                    is used for formatting.
+	## Returns       : A string, containing the textual output of a
+	##                 styled string. All parse functions except :value
+	##                 (e.g. :image) and text_styles (e.g. :foreground) are ignored.
+	## Function      : To turn a styled string into a plain string,
+	##                 optionally getting only part of it.
+	_local l_the_write_stream << internal_text_output_stream.new_for(40)
+	_local l_nr_tabs << 1
+	_local l_no_tabs? << (p_column_nr _isnt _unset)
+	_if _not l_no_tabs? _then p_column_nr << -1 _endif
+	p_style_holder << p_style_holder.default(string_styles_holder)
+	_for i_text, i_style _over _self.fast_elements_in_pairs()
+	_loop
+		_if (i_text _is tab_char)
+		_then
+			_if ((l_nr_tabs +^<< 1) = p_column_nr) _then _leave _endif
+			_if l_no_tabs? _then _continue _endif
+		_elif (l_nr_tabs < p_column_nr)
+		_then
+			_continue _with _true 
+		_elif (i_style _is :value)
+		_then
+			_if (p_value_holder _is _unset)
+			_then
+				l_the_write_stream.write(%<, i_text, %>)
+			_else
+				(l_value, l_type) << p_value_holder.value(i_text)
+				_if l_type _isnt :image
+				_then
+					(l_value, l_type) << p_style_holder.format(l_value, i_text, p_value_holder)
+				_endif
+				_if l_type _isnt :image
+				_then
+					l_the_write_stream.write(l_value)
+				_endif
+			_endif
+			_continue 
+		_elif (i_style _is :merge)
+		_then
+			_if (i_text _is _unset)
+			_then
+				# all columns are merged
+				l_no_tabs? << _false
+			_else
+				# add the nr of columns we marge
+				_if (l_nr_tabs +<< (i_text - 1)) > p_column_nr
+				_then
+					# we have passed it, so it is included in the merged columns
+					l_nr_tabs << p_column_nr
+				_endif
+			_endif
+			_continue 
+		_elif _self.defined_parse_functions.includes?(i_style)
+		_then
+			_continue
+		_endif
+		i_text.write_on(l_the_write_stream)
+	_endloop 
+	>> l_the_write_stream.string
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method styled_string_mixin.slice(p_start_index, _optional p_end_index)
+	## Parameters    : P_START_INDEX: Integer specifying first
+	##                    column whose contents we want.
+	##                 [P_END_INDEX]: Optional integer specifying last
+	##                    column whose contents we want. By
+	##                    default, everything following
+	##                    P_START_INDEX is taken. 
+	## Returns       : Simple vector containing _self's styled elements
+	## Function      : Get a slice from self, where every :tab
+	##                 denotes moving to a new column, and
+	##                 P_START_INDEX identifies the column whose
+	##                 contents we want. If P_END_INDEX is not
+	##                 specified, all self's contents up to the end are used.
+	_local l_slice << rope.new()
+	_local l_nr_tabs << 1, l_slicing? << (p_start_index = 1)
+	_for i_text, i_style _over _self.fast_elements_in_pairs()
+	_loop
+		_if (i_text _is tab_char)
+		_then
+			_if ((l_nr_tabs +^<< 1) = p_end_index)
+			_then
+				_leave
+			_elif l_slicing?
+			_then
+				l_slice.add(_if (i_style _isnt _unset) _then >> (:tab_ + i_style) _else >> :tab _endif)
+			_elif _not (l_slicing? << (p_start_index = l_nr_tabs))
+			_then
+				_continue _with _true 
+			_endif
+		_elif l_slicing?
+		_then
+			_if (i_text _is newline_char)
+			_then
+				l_slice.add(:newline)
+			_else 
+				l_slice.add(i_style)
+				l_slice.add(i_text)
+			_endif
+		_else
+			_continue _with _true 
+		_endif
+	_endloop 
+	>> l_slice.as_simple_vector()
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method styled_string_mixin.matches?(p_pattern, _optional p_column_nr, p_value_holder)
+	## Parameters    : P_PATTERN: Pattern containing *,?'s that
+	##                    should be canonical (lowercase!)
+	##                 [P_COLUMN_NR]: If the styled_string contains
+	##                    tabs, P_COLUMN_NR may denote which part of it is wanted as a
+	##                    char vec.
+	##                 [P_VALUE_HOLDER]: If the styled_string
+	##                    contains value references, P_VALUE_HOLDER will be used to
+	##                    resolve those. (If a value reference is made, but no
+	##                    P_VALUE_HOLDER is specified, the index of the value will be
+	##                    listed instead between <>'s.)
+	## Returns       : _true if P_PATTERN matches the self.as_charvec(),
+	##                 _false otherwise.
+	## Function      : Check wether self's character representation
+	##                 matches P_PATTERN. Optionally, P_COLUMN_NR
+	##                 may specify which part of _self we want to check (this is
+	##                 useful when the columns have been rearranged...)
+	## Methodology   : See also: ro_charindex_mixin.matches?()
+	>> _self.as_charvec(p_column_nr, p_value_holder).matches?(p_pattern)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method styled_string_mixin.int!replace_image_ref(p_image_data, p_image_scheme_name)
+	## Parameters    : P_IMAGE_DATA: Data for :image function in
+	##                    styled_string.
+	##                 P_IMAGE_SCHEME_NAME: Name of image scheme
+	##                    that we will replace P_IMAGE_DATA with.
+	## Returns       : _true if replacement has been made,
+	##                 _false if it could not be found
+	## Function      : 
+	_local l_styled_string << _self.styled_string
+	_if ((l_position << l_styled_string.index_of(p_image_data)) _isnt _unset)
+	_then
+		l_styled_string[l_position] << p_image_scheme_name
+		_return _true 
+	_endif
+	>> _false 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method styled_string_mixin.number_of_tabs
+	## Parameters    : -
+	## Returns       : Integer, denoting the number of tabs
+	##                 in this styled_string.
+	## Function      : Count number of tabs.
+	## Note          : In tabular view, the number of columns will
+	##                 be the number_of_tabs + 1.
+	_local l_count << 0
+	_for i_text, i_style_name _over _self.fast_elements_in_pairs()
+	_loop
+		_if (i_text _is tab_char) 
+		_then
+			# we are entering a new column
+			l_count +<< 1
+		_endif
+		>> _true 
+	_endloop 
+	>> l_count
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method styled_string_mixin.number_of_lines
+	## Parameters    : 
+	## Returns       : Integer, denoting the number of lines
+	##                 in this styled_string.
+	## Function      : Count the number of new_line s in this styled string.
+	##                 The number of lines is one extra.
+	_local l_anything_count << 0, l_max_count << 0, l_count << 0
+	_for i_text, i_style _over _self.fast_elements_in_pairs()
+	_loop
+		_if (i_text _is tab_char) 
+		_then
+			l_max_count << l_max_count.max((l_count ^<< 0) + (l_anything_count ^<< 0))
+		_elif (i_text _is newline_char) 
+		_then
+			# we are entering a new line
+			l_count +<< 1
+		_elif _not {:merge, :align, :move}.includes?(i_style) _andif (i_text <> "")
+		_then
+			# we found something on this line
+			l_anything_count << 1
+		_endif
+	_endloop 
+	>> l_max_count.max(l_count + l_anything_count)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method styled_string_mixin.value_id_in_column(p_column_nr)
+	## Parameters    : P_COLUMN_NR: If the styled_string contains
+	##                    tabs, P_COLUMN_NR denotes which part of it is wanted
+	## Returns       : First value-id of self's string in current column
+	## Function      : Retrieve the first value id as specified with
+	##                 :value in the styled string, in the column
+	##                 corresponding with P_COLUMN_NR.
+	##                 (Columns being identified with :tab)
+	_local l_nr_tabs << 1
+	_for i_text, i_style _over _self.fast_elements_in_pairs()
+	_loop
+		_if (i_text _is tab_char)
+		_then
+			_if ((l_nr_tabs +^<< 1) = p_column_nr) _then _leave _endif
+		_elif (l_nr_tabs < p_column_nr)
+		_then
+			_continue _with _true 
+		_elif (i_style _is :value)
+		_then
+			_return i_text
+		_endif
+	_endloop 
+_endmethod
+$
+
+$
+

@@ -1,0 +1,266 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+## Renders self's styled_string on self's canvas; this
+## styled_string will be created from filter-values as known to
+## display_tree_manager (the latter is also responsible for
+## applying them).
+##
+## Since this renderer knows where things are (on the screen),
+## it will handle events in its region: activate editors to
+## enter filters.
+##
+## See also the super class styled_string_renderer.
+def_slotted_exemplar(:styled_filter_renderer,
+{
+},
+:styled_string_renderer)
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_private _method styled_filter_renderer.init(p_properties)
+	## Parameters    : P_PROPERTIES: See new method.
+	## Returns       : An initialised _self
+	## Function      : 
+	_super.init(p_properties)
+	.allow_multi_line? << _false
+	.grid_lines? << _true 
+	# at this moment, we leave the filterer heaving the default
+	# row-height based on the font used for renderer the filter
+	# if we do not want this, remove the following line of code
+	_self.row_height << .style_holder.default_row_height
+	>> _self 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={subclassable})
+_method styled_filter_renderer.render_row_heading(p_x, p_y)
+	## Parameters    : P_X: The x-coordinate *from which* we need
+	##                    to start rendering. If P_X > the width of
+	##                    the row_heading, nothing is rendered.
+	##                 P_Y: The y-coordinate *at which* the row
+	##                    heading string_styles_holder.message(:filter)
+	##                    needs to be rendered.
+	## Returns       : _true if something got rendered, _false otherwise.
+	## Function      : Renders the row-heading at (0, P_Y)
+	_local l_default_text << _self.style_holder.message(:filter)
+	>> _super.render_row_heading(p_x, p_y, l_default_text)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_filter_renderer.headings_holder << p_headings_holder
+	## Parameters    : P_HEADINGS_HOLDER: contains information
+	##                    about headings (rows and column), their
+	##                    alignments, dimensions, etc. 
+	## Returns       : P_HEADINGS_HOLDER
+	## Function      : Specify P_HEADINGS_HOLDER to be used, and create
+	##                 self's styled_string from filter-values as
+	##                 known to headings_holder. 
+	.headings_holder << p_headings_holder
+	_if (p_headings_holder _isnt _unset)
+	_then
+		_self.row_height << _self.style_holder.row_height
+	_endif
+	>> p_headings_holder
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method styled_filter_renderer.render(p_x, p_y, p_xmax, p_ymax, p_index)
+	## Parameters    : P_X: The x-coordinate *from which* we need
+	##                    to start rendering. Only columns whose
+	##                    right offset is larger than P_X will be rendered.
+	##                    the row_heading, nothing is rendered.
+	##                 P_Y: The y-coordinate *at which* the row
+	##                    heading needs to be rendered.
+	##                 P_XMAX: Maximal horizontal value to be used
+	##                 P_YMAX: Maximal vertical value to be used
+	##                 P_INDEX: The index we are in the list of all
+	##                    things rendered, this will be used as a default text.
+	## Returns       : 
+	## Function      : Renders the self's value at (0, P_Y)
+	# ToDo: All code about the clipbounds can go when the
+	# clipbounds work properly (i.e. setting them to unset, and
+	# then asking them should return the right bounds)
+#	_local l_canvas << _self.canvas
+#	_local l_clipbounds << l_canvas.clip_bounds
+#	l_canvas.clip_bounds << _unset
+	# the following 3 lines are the only essential code
+	.styled_string << .value_holder.styled_string
+	.canvas.clear_area(p_x, p_y, p_xmax, p_ymax)
+	_super.render(p_x, p_y, p_xmax, p_ymax, p_index)
+#	l_canvas.clip_bounds << l_clipbounds
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method styled_filter_renderer.handle_click(p_x, p_y, p_event, p_agent)
+	## Parameters    : P_X, P_Y: position where user clicked
+	##                 P_EVENT: An input event that needs handling.
+	##                 P_AGENT: The agent of the window in which we draw.
+	## Returns       : _true if the event has been handled, _false otherwise
+	## Function      : Check if P_EVENT is a release (or
+	##                 release_press), if so, check if we can
+	##                 enter a filter value and activate the right
+	##                 in-place-editor for the filter.
+	_if (((l_func << p_event.func) _isnt :release) _andif (l_func _isnt :double_release)) _orif 
+	    ((l_column_index << _self.column_at(p_x)) _is _unset)
+	_then
+		_return _false 
+	_endif
+	# check for text_style, alignment, and click-position
+	_local (l_found?, l_type, l_value, l_text_style, l_text, l_dx, l_dy, l_width, l_height) << _self.styled_element_at(p_x, p_y)
+	# column is known
+	_local (l_xmin, l_xmax, l_visible?, l_align, l_selectable?) << _self.headings_holder.tab_info(l_column_index)
+	_local l_editor, l_canvas << .canvas, l_agent << l_canvas.agent
+
+	_if _self.headings_holder.has_pick_list_for?(l_column_index)
+	_then
+		_local l_ed_name << :|int in_place_choice_editor|
+		l_editor << l_agent.editors[l_ed_name]
+		_local l_items << rope.new_with({:filter_show_all, string_styles_holder.message(:filter_show_all)})
+		l_items.add_all_last(_self.headings_holder.pick_list_for(l_column_index))
+		_if l_editor _is _unset _orif
+		    l_editor.items.size <> l_items.size
+		_then
+			l_editor << l_agent.editors[l_ed_name] << in_place_choice_editor.new(l_agent, :items, l_items)
+		_else
+			l_editor.items << l_items
+		_endif
+	_else
+		_local l_ed_name << :|int in_place_value_editor|
+		l_editor << l_agent.editors[l_ed_name]
+		_if (l_editor _is _unset)
+		_then
+			l_editor << l_agent.editors[l_ed_name] << in_place_value_editor.new(l_agent)
+		_endif
+	_endif
+	# show editor
+	l_csh << _self.style_holder.cell_spacing_h
+	l_xmin +<< 2
+	_if l_found?
+	_then
+		# check if the value we're editing is an image
+		l_click_pos << _if (l_text_style _isnt :resolved_image)
+			       _then >> l_agent.int!caret_pos(l_text, l_text_style.font, l_dx)
+			       _else >> -1
+			       _endif
+	_else 
+		# edit at end
+		l_click_pos << 1000
+	_endif
+	l_align << :left
+	l_text_style << _self.style_holder.default_style
+	l_val_left << l_xmin + l_csh #!!
+	l_val_right << l_xmax - l_csh #!!
+	l_top << l_canvas.vertical_position + l_canvas.heading_renderer.row_height
+	l_bottom << l_top + _self.row_height
+	# user clicked on the value directly, so set focus
+	_local l_focus? << _true 
+	l_agent.edit_manager.start_edit(_self, _unset, l_column_index, l_editor, l_text_style, l_click_pos,
+					l_xmin, l_top, l_xmax, l_bottom, l_val_left, l_val_right, l_align, l_focus?)
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method styled_filter_renderer.value(p_column_nr)
+	## Parameters    : P_COLUMN_NR: Number identifying column for which
+	##                    a filter value is needed.
+	## Returns       : The filter value as it
+	##                 is needed by the in-place-editor for the
+	##                 P_COLUMN_NR-th column.
+	## Function      : Adapt filter value so it is suitable for the
+	##                 in-place-editor used for the P_COLUMN_NR-th column.
+	_local l_vh << _self.value_holder
+	_local l_v << l_vh.value(p_column_nr)
+	# check if this value has been initialised / set before;
+	# otherwise: adapt
+	_if (l_vh.filter_values[p_column_nr] _is _unset)
+	_then
+		# check if are filtering on strings or values
+		l_v << _if _self.headings_holder.has_pick_list_for?(p_column_nr)
+		       _then >> :filter_show_all
+		       _else >> ""
+		       _endif
+	_endif
+	>> l_v
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method styled_filter_renderer.value(p_column_nr) << p_new
+	## Parameters    : P_COLUMN_NR: Number identifying column for
+	##                    which a new filter value has been specified.
+	##                 P_NEW: New filter value that as selected / entered
+	##                    by the end-user.
+	## Returns       : P_NEW
+	## Function      : Check the value that we have been given, and
+	##                 apply it as a filter. Three kinds of filters
+	##                 are used:
+	##                 1) String match. The end-user specified a
+	##                    text string with or without a '*', if not
+	##                    this is added at the end.
+	##                 2) Value match. A value has been selected
+	##                    from a pick list.
+	##                 3) Comparison. The end user started the
+	##                    match string with a >, <, = or ~. The
+	##                    comparison operator is filtered (this may
+	##                    also be <=, >=, <> or ~=) and the rest of
+	##                    the string is converted to a value to
+	##                    which is compared.
+	##                 Corresponding filters are applied by sending
+	##                 the appropriate method to self's value-holder,
+	##                 most likely to be the tree-manager.
+	##                 If a filter is removed, it will be cleared
+	##                 from self's value-holder. 
+	# test whether we are setting a match string or an equal value fitler
+	_local l_heading_id << _self.headings_holder.column_heading_ids[p_column_nr]
+	
+	_if _self.headings_holder.has_pick_list_for?(p_column_nr)
+	_then
+		# find the selected string value
+		_for i_cgbv _over _self.headings_holder.pick_list_for(p_column_nr).fast_elements()
+		_loop
+			_if (i_cgbv _isnt _unset) _andif (i_cgbv[1] = p_new)
+			_then
+				l_str_rep << i_cgbv[2]
+			      _leave
+			_endif
+		_endloop
+		# check if we have set or cleared the filter
+		_if (l_str_rep _is _unset) _orif (p_new = :filter_show_all)
+		_then
+			# we want to clear the filter
+			_self.value_holder.clear_filter(p_column_nr)
+		_else
+			_self.value_holder.set_equals_value_filter(p_column_nr, l_str_rep, l_heading_id, p_new)
+		_endif
+		
+	_elif p_new.empty? _orif (p_new = "*") _orif (p_new = _self.style_holder.message(:filter_show_all))
+	_then
+		# we want to clear the filter
+		_self.value_holder.clear_filter(p_column_nr)
+	_elif _self.style_holder.is_comparison?(p_new)
+	_then
+		# we want a predicate based on >, >=, <, <=, <>, ~, ~=, or =
+		_local (l_comp_op, l_value, l_converted?) << _self.style_holder.get_comparison(p_new, l_heading_id)
+		_self.value_holder.set_comp_value_filter(p_column_nr, p_new, l_heading_id, l_value, l_converted?, l_comp_op)
+	_else
+		# we want to filter based on string matching
+		_if (p_new.index_of(%*) _is _unset)
+		_then 
+			p_new +<< %*
+		_endif
+		_self.value_holder.set_matches_string_filter(p_column_nr, p_new, l_heading_id)
+	_endif
+	>> p_new
+_endmethod
+$

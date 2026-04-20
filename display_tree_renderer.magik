@@ -1,0 +1,497 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+## Renders self's styled_string on self's canvas, using self's
+## value_holder *or* the value_selector when values in the
+## styled string need resolving.
+##
+## By assuming self's value_holder contains a display_tree, it
+## can render 'connect_lines' connecting trees to their parent.
+## (If :connect_lines? is set to true)
+##
+## See also the super class styled_string_renderer.
+##
+## The following 'properties' need to be set for proper functioning:
+##  * connect_lines: if _true (defaults to _false) then lines
+##    connecting trees to their parent will be rendered.
+## Supports the following properties:
+##  * value_selector: if supplied, this handler will be invoked
+##    to retrieve values denoted with the :value placeholder
+##    inside the styled_string. When invoked, it will be passed
+##    two parameters:
+##    P_TREE: Display tree that is currently stored in the
+##       .value_holder, and is being rendered now.
+##    P_INDEX_OR_FIELDNAME: The index that has been provided
+##       directly after :value in the styled_string.
+##  * row_heading_buttons?: Whether or not buttons will be
+##    drawn for row-headings, defaults to _true 
+def_slotted_exemplar(:display_tree_renderer,
+{
+	{:value_selector,        _unset},
+	{:connect_lines?,        _false},
+	{:row_heading_buttons?,  _true },
+	{:render_connect_lines?, _unset}
+},
+:styled_string_renderer)
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+## if supplied, this handler will be invoked
+## to retrieve values denoted with the :value placeholder
+## inside the styled_string. When invoked, it will be passed
+## two parameters:
+## P_TREE: Display tree that is currently stored in the
+##    .value_holder, and is being rendered now.
+## P_INDEX_OR_FIELDNAME: The index that has been provided
+##    directly after :value in the styled_string.
+display_tree_renderer.define_slot_access(:value_selector, :writable)
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+## if _true (defaults to _false) then lines
+## connecting trees to their parent will be rendered.
+display_tree_renderer.define_slot_access(:connect_lines?, :writable)
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={external})
+## Whether or not buttons will be drawn for row-headings, defaults to _true
+display_tree_renderer.define_slot_access(:row_heading_buttons?, :writable)
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+## Determines whether lines connecting trees to their parent
+## will be rendered. (Defaults to true)
+display_tree_renderer.define_slot_access( :render_connect_lines?, :writable )
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_private _method display_tree_renderer.init(p_properties)
+	## Parameters    : P_PROPERTIES: See new method, the following
+	##                    have been added in this subclass:
+	##                  * connect_lines?: if true (defaults to false) then
+	##                    indentation will be included for lines connecting trees
+	##                    to their parent.
+	##                  * render_connect_lines?: if _true (defaults
+	##                    to _true) then lines connecting trees to their parent
+	##                    will be rendered.
+	##                  * value_selector: if supplied, this handler will be invoked
+	##                    to retrieve values denoted with the :value placeholder
+	##                    inside the styled_string. When invoked, it will be passed
+	##                    two parameters:
+	##                    P_TREE: Display tree that is currently stored in the
+	##                       .value_holder, and is being rendered now.
+	##                    P_INDEX_OR_FIELDNAME: The index that has been provided
+	##                       directly after :value in the styled_string.
+	##                  * row_heading_buttons?: Whether or not buttons will be
+	##                    drawn for row-headings, defaults to _true 
+	## Returns       : An initialised _self
+	## Function      : 
+	# check input
+	.connect_lines? << p_properties[:connect_lines?].default(_false)
+	.render_connect_lines? << p_properties[:render_connect_lines?].default(_true)
+	.row_heading_buttons? << p_properties[:row_heading_buttons?].default(_true)
+	_if ((l_value_selector << p_properties[:value_selector]) _isnt _unset)
+	_then
+		.value_selector << handler.check_type(l_value_selector, p_properties[:model])
+	_endif
+	p_properties[:tree_manager].add_dependent(_self, :second_level_children?)
+	>> _super.init(p_properties)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_renderer.value_holder << p_tree
+	## Use to get values from when referenced from
+	## the styled string
+	## For this renderer, it will be assumed P_TREE is a display_tree.
+	## It's styled_string will be set as _self styled_string,
+	## so api-users do not need to set a styled_string manually.
+	.value_holder << p_tree
+	_if (p_tree _isnt _unset)
+	_then
+		# check if it has children, since that might change the string
+		# (and we will ask this anyway in a second)
+		p_tree.children?
+		.styled_string << p_tree.styled_string
+	_endif
+	>> p_tree
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_renderer.value_holder ^<< p_tree
+	## Use to get values from when referenced from
+	## the styled string
+	## For this renderer, it will be assumed P_TREE is a display_tree.
+	## It's styled_string will be set as _self styled_string,
+	## so api-users do not need to set a styled_string manually.
+	l_old_tree << .value_holder
+	_self.value_holder << p_tree
+	>> l_old_tree
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_method display_tree_renderer.left_offset(_optional p_column_index)
+	## Parameters    : [P_COLUMN_INDEX]: Optional, the index of the
+	##                    column for which we want to know the offset
+	## Returns       : Inner cell offset, for the left side
+	## Function      : If P_COLUMN_INDEX is _unset or the first
+	##                 visible column, then the space needed to draw connect lines
+	##                 is added (if there are :connect_lines?)
+	_local l_first_visible? << (p_column_index _is _unset) _orif _self.headings_holder.first_visible_column?(p_column_index)
+	# guard against the .value-holder not being know yet
+	>> _if .connect_lines? _andif l_first_visible? _andif (.value_holder _isnt _unset)
+	   _then >> (.value_holder.level - 1) * _self.style_holder.box_spacing
+	   _else >> _super.left_offset(p_column_index)
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method display_tree_renderer.is_column_selected?(p_column_index, _optional p_selection)
+	## Parameters    : P_COLUMN_INDEX: Optional, the index of the
+	##                    column for which we want to know the offset
+	##                 [P_SELECTION]: Valid selection for the
+	##                    .value_holder, e.g. _false, _true, an integer or a
+	##                    simple_vector with column indices.
+	## Returns       : Sum of left_offset and right_offset, the
+	##                 extra width we will need in this cell apart from its contents.
+	## Function      : 
+	# guard against the .value-holder not being know yet
+	>> _if ((l_vh << .value_holder) _is _unset)
+	   _then >> _false
+	   _elif (p_column_index _is 0)
+	   _then >> l_vh.selected?
+	   _else >> _if (p_selection _is _unset)
+		    _then >> l_vh.is_column_selected?(p_column_index)
+		    _else >> l_vh.is_column_selected_in?(p_column_index, p_selection)
+		    _endif
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_renderer.value(_optional p_index)
+	## Parameters    : [P_INDEX]: Index specifying what value we want
+	##                    to retrieve, possibly _unset
+	## Returns       : Value stored in the value_holder,
+	##                 if a l_value_selector is specified, this
+	##                 will be used to retrieve the value, otherwise
+	##                 value_holder.value(P_INDEX) will be used.
+	## Function      : 
+	>> _if ((l_value_selector << .value_selector) _isnt _unset)
+	   _then >> l_value_selector(_self.value_holder, p_index)
+	   _else >> _self.value_holder.value(p_index)
+	   _endif 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_renderer.render_connect_lines(p_x, p_y)
+	# Author         : GE Smallworld (Ken Korsmit)
+	# Date           : Nov/2001
+	#
+	## Parameters    : P_X: The x-coordinate *from which* we need
+	##                    to start rendering. Only columns whose
+	##                    right offset is larger than P_X will be rendered.
+	##                    the row_heading, nothing is rendered.
+	##                 P_Y: The y-coordinate *at which* the row
+	##                    heading needs to be rendered.
+	## Returns       : _true if something got rendered, _false otherwise.
+	## Function      : Renders connect lines to self's value (a
+	##                 display tree) and for higher level display
+	##                 trees that have lower level children.
+	##                 The connect lines rendered are all that are
+	##                 needed for this row.
+	_if _not .render_connect_lines? _orif _not .connect_lines?
+	_then
+		_return _false
+	_endif
+	_local l_x << _self.connect_lines_offset
+	_if (l_x <= p_x) _then _return _false _endif
+	_local p_tree << _self.value_holder
+	_local l_styles_holder << _self.style_holder
+	_local l_line_style << l_styles_holder.connection_line_style
+	_local l_hy << p_y + _self.half_row_height
+	_local l_yend << p_y + _self.row_height
+	_local l_bs << l_styles_holder.box_spacing
+	_local l_level << p_tree.level
+	_local l_children? << p_tree.children?
+	_local l_xl << l_x - (l_bs _div 2)
+	# draw lines to self
+	_if (l_level > 2)
+	_then
+		# draw horizontal line to p_tree
+		_self.draw_segment(l_line_style, l_xl, l_hy, l_x + 2, l_hy)
+		# draw small vertical line to p_tree
+		_if p_tree.last_child?
+		_then
+			_self.draw_segment(l_line_style, l_xl, p_y + 1, l_xl, l_hy)
+		_else
+			_self.draw_segment(l_line_style, l_xl, p_y + 1, l_xl, l_yend)
+		_endif
+	_elif l_children?
+	_then
+		# draw horizontal line to p_tree
+		_self.draw_segment(l_line_style, l_xl, l_hy, l_x + 2, l_hy)
+	_endif
+	_if l_children? 
+	_then
+		# draw small vertical line from this tree
+		_if p_tree.expanded?
+		_then
+			_self.draw_segment(l_line_style, l_xl + l_bs, l_yend - 3, l_xl + l_bs, l_yend)
+		_endif
+	_endif
+	# check if this area is damaged, otherwise, we do not need to
+	# draw it!
+	_if (l_x <= p_x + l_bs) _then _return _true _endif
+	# draw lines for parents
+	_loop
+		_if ((p_tree << (l_last << p_tree).parent) _is _unset) _or ((l_level -<< 1) <= 2)
+		_then
+			_leave
+		_elif _not p_tree.last_child?
+		_then 
+			# draw lines for this parent
+			_self.draw_segment(l_line_style, l_xl -<< l_bs, p_y + 1, l_xl, l_yend)
+		_else
+			l_xl -<< l_bs
+		_endif
+	_endloop
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method display_tree_renderer.render_expand_button(p_x, p_y)
+	## Parameters    : P_X, P_Y: Centre position where expand
+	##                    button has to go.
+	## Returns       : 
+	## Function      : Get the appropriate image for the
+	##                 expand_scheme of self styles_holder
+	_local l_styles_holder << _self.style_holder
+	_local l_image << l_styles_holder.resolve_image(l_styles_holder.expand_scheme, _self.value_holder)
+	_local (l_w, l_h) << l_styles_holder.image_width_and_height(l_image)
+	_self.int!render_image(l_image, p_x - l_w, p_y - l_h _div 2)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method display_tree_renderer.handle_click(p_x, p_y, p_event, p_agent)
+	# Author         : GE Smallworld (Ken Korsmit)
+	# Date           : Nov/2001
+	#
+	## Parameters    : P_X: Horizontal position on the internal window.
+	##                 P_Y: Relative height *inside* the row that
+	##                    we are checking.
+	##                 P_EVENT: Event that has been raised.
+	##                 P_AGENT: Normally handling P_EVENT.
+	## Returns       : Either just _false since this is not a click, or
+	##                 1) _true (we handled this
+	##                 2) :expand (end-user has just
+	##                    expanded/collapsed this tree)
+	##                 Or
+	##                 1) _false (we did not handle this)
+	##                 2) :click (continue with click_notifier for action :click)
+	##                 Or
+	##                 1) _false (we did not handle this)
+	##                 2) Type, being :value, :toggle, :radio_toggle,
+	##                    :image, etc. This may be treated as a action for which the
+	##                    appropriate notifier is looked up.
+	##                 3) Value, being the index that was following
+	##                    the :type (2) in the original styled string.
+	##                 4) Text style used, or :resolved_image
+	##                 5) Text or image being clicked at
+	##                 6) X-offset inside the element denoted by '5'.
+	##                 7) Y-offset inside the element denoted by '5'.
+	## Function      : Check if P_EVENT concerns a click or double
+	##                 click, and if so, return the appropriate
+	##                 action and data.
+	_local l_xleft << _self.left_offset() + (l_rhw << _self.headings_holder.row_headings_width)
+	_if (p_x < l_xleft)
+	_then
+		_if _not (((l_func << p_event.func) _is :press) _orif (l_func _is :double_press)) _then _return _false _endif 
+		_if (p_x >= l_xleft - _self.style_holder.box_spacing)
+		_then
+			# expand region
+			_local p_tree << _self.value_holder
+			_dynamic !updating_trees?! << _true
+			p_tree.expanded? << _not p_tree.expanded?
+#			_return (_true, :expand)
+			_return (_false, :expand)
+		_elif (p_x > l_rhw)
+		_then
+			_if (l_func _is :double_press)
+			_then
+				# ToDo: when a double click, compress parent
+				_return _true
+#				_return (_true, :expand)
+#				_return (_false, :expand)
+			_endif
+			_return (_true, _unset)
+		_endif
+		_return (_false, :click)
+	_endif
+	>> _super.handle_click(p_x, p_y, p_event, p_agent)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method display_tree_renderer.note_change(p_who, p_what, p_value)
+	## Parameters    : P_WHO: Object that issued the change notification.
+	##                 P_WHAT: The aspect that changed: One of
+	##                  * :second_level_children? (we will have /
+	##                    have not trees on the third level,
+	##                    i.e. the top trees have children) 
+	##                 P_VALUES: Optional extra argument;
+	##                  * In case P_WHAT is :second_level_children?, 
+	##                    this is the new value for :connect_lines?.
+	## Returns       : -
+	## Function      : React to change notifications.
+	_if (p_what _is :second_level_children?)
+	_then
+		.connect_lines? << p_value
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree_renderer.exported_properties
+	## List of property (names) that can be set by the api-user
+	_local l_set << _super.exported_properties.copy()
+	l_set.add_all({:connect_lines?, :render_connect_lines?, :value_selector, :row_heading_buttons?})
+	>> l_set
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_renderer.render_row_heading(p_x, p_y, p_index)
+	## Parameters    : P_X: The x-coordinate *from which* we need
+	##                    to start rendering. If P_X > the width of
+	##                    the row_heading, nothing is rendered.
+	##                 P_Y: The y-coordinate *at which* the row
+	##                    heading needs to be rendered.
+	##                 P_INDEX: The index we are in the list of all
+	##                    things rendered, this will be used as a default text.
+	## Returns       : _true if something got rendered, _false otherwise.
+	## Function      : Renders the row-heading at (0, P_Y)
+	>> _super.render_row_heading(p_x, p_y, p_index) _or
+	   _self.render_connect_lines(p_x, p_y)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree_renderer.connect_lines_offset
+	## Parameters    : 
+	## Returns       : The offset for the first column, the connect
+	##                 lines and optional rowheadings.
+	## Function      : 
+	>> _self.left_offset() + _self.headings_holder.row_headings_width
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_renderer.render(p_x, p_y, p_xmax, p_ymax, p_index)
+	## Parameters    : P_X: The x-coordinate *from which* we need
+	##                    to start rendering. Only columns whose
+	##                    right offset is larger than P_X will be rendered.
+	##                    the row_heading, nothing is rendered.
+	##                 P_Y: The y-coordinate *at which* the row
+	##                    heading needs to be rendered.
+	##                 P_XMAX: Maximal horizontal value to be used
+	##                 P_YMAX: Maximal vertical value to be used
+	##                 P_INDEX: The index we are in the list of all
+	##                    things rendered, this will be used as a default text.
+	## Returns       : 
+	## Function      : Renders the self's value at (0, P_Y)
+	_super.render(p_x, p_y, p_xmax, p_ymax, p_index)
+	_if _self.value_holder.children?
+	_then
+		# draw expand button / collapse
+		_self.render_expand_button(_self.connect_lines_offset, p_y + _self.half_row_height, _self.value_holder.expanded?)
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree_renderer.render_focus_border(p_y, _optional p_focus_column)
+	## 
+	## Parameters    : P_Y: The y-coordinate *at which* the row
+	##                    focus border needs to be rendered.
+	##                 P_FOCUS_COLUMN: The column index with focus
+	##                    when cell selection is possible. 
+	## Returns       : 
+	## Function      : Renders a focus border for self's value at (0, P_Y)
+
+	_local l_style_holder << _self.style_holder
+	_local l_tabular_style? << l_style_holder.tabular_style?
+	_local l_spw << l_style_holder.selection_spacing_w
+
+	_local l_xr << 0
+	_local l_xmin, l_xmax
+	_local l_selected? << _false
+
+	_for i_x, i_y, i_text, i_text_style, i_type, i_width, i_height, i_value _over _self.positioned_texts_and_text_styles(0, p_y)
+	_loop
+		_if i_text_style _is :tab
+		_then
+			l_selected? << _if p_focus_column _isnt _unset
+				       _then >> i_value _andif i_type _is p_focus_column
+				       _else >> i_value
+				       _endif
+
+			l_xr << i_x + i_width
+			_if l_selected? _andif l_tabular_style?
+			_then
+				_if l_xmin _is _unset _then l_xmin << i_x _endif
+				l_xmax << l_xr
+			_endif
+			l_xr << i_x
+			
+		_elif i_text_style _is :resolved_image
+		_then
+			l_xr << i_x + i_width
+			
+		_elif i_type _is :custom_draw
+		_then
+			l_xr << i_x + i_width
+			_if l_selected?
+			_then
+				l_xmin << i_x
+				l_xmax << l_xr
+				_leave
+			_endif
+			
+		_elif l_selected?
+		_then
+			_if _not l_tabular_style?
+			_then
+				_if l_xmin _is _unset _then l_xmin << l_xr.max(i_x - l_spw) _endif
+				l_xmax << i_x + i_width + l_spw
+			_endif
+			l_xr << i_x + i_width
+		_endif
+	_endloop
+
+	_if l_xmin _isnt _unset
+	_then
+		a_tree_item << _self.canvas
+		_local l_bounds << pixel_bounding_box.new(l_xmin, p_y, l_xmax.min(a_tree_item.h_doc_size - 1),
+							  p_y + _self.row_height - 1)
+		_local l_clip_bounds << _self.clip_bounds
+		_self.clip_bounds << l_bounds
+		l_bounds.draw_on( a_tree_item, l_style_holder.grid_line_style )
+		_self.clip_bounds << l_clip_bounds
+	_endif
+
+_endmethod
+$
+

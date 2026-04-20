@@ -1,0 +1,659 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=restricted)
+def_slotted_exemplar( :tree_item_column_manager,
+	{
+		{ :tree_item,       _unset },
+		{ :all_columns,     _unset },
+		{ :visible_columns, _unset },
+		{ :items,           _unset }
+	},
+	:model)
+$
+
+_pragma(classify_level=restricted)
+tree_item_column_manager.define_slot_access( :all_columns, :read, :public )
+$
+
+_pragma(classify_level=restricted)
+tree_item_column_manager.define_slot_access( :visible_columns, :read, :public )
+$
+
+_pragma(classify_level=restricted)
+tree_item_column_manager.define_shared_constant( :help_id, 5990, :public )
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.new( a_tree_item )
+	## 
+	## Create a new instance
+	##
+	
+	>> _clone.init( a_tree_item )
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.init( a_tree_item )
+	## 
+	## Initialise slots
+	##
+
+	_super.init()
+	.visible_columns << rope.new()
+	.all_columns     << rope.new()
+	.items           << property_list.new()
+	.tree_item       << a_tree_item
+	>> _self 
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.on_activation()
+	## 
+	## When activated make dependent on parent tree_item
+	##
+	
+	.tree_item.add_dependent( _self, :column_headings )
+
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.on_deactivation()
+	## 
+	## When deactivated, remove dependencies
+	##
+	
+	.tree_item.remove_dependent( _self )
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.activate_in( a_frame )
+	## 
+	##
+
+	a_frame.resize? << _true
+	
+	top_rc << rowcol.new( a_frame, _unset, 1, _unset, :style, :top_level,
+			      :row_resize_values, {100,0},
+			      :resize?,           _true )
+
+	tree_rc << rowcol.new( top_rc, _unset, 3, _unset, :style, :nested,
+			       :resize?,           _true,
+			       :col_alignment,     :fill,
+			       :row_alignment,     :fill,
+			       :col_resize_values, {50,0,50} )
+
+	t1_rc << rowcol.new( tree_rc, _unset, 1, _unset, :style, :nested,
+			     :resize?,       _true,
+			     :col_alignment, :fill,
+			     :row_alignment, :fill )
+
+	label_item.new( t1_rc, _self.message(:available_columns) )
+
+	.items[:all] << ti1 << tree_item.new( t1_rc,
+					      :model,                 _self,
+					      :resize?,               _true,
+					      :col_alignment,         :fill,
+					      :row_alignment,         :fill,
+					      :aspect,                :all_columns,
+					      :double_click_notifier, {:|move_column()|, :all},
+					      :select_notifier,       {:|selected()|, :all},
+					      :message_on_no_data?,   _false,
+					      :mode,                  :many )
+	
+	# Add buttons
+	_self.make_button_panel( tree_rc )
+	
+	t2_rc << rowcol.new( tree_rc, _unset, 1, _unset, :style, :nested,
+			     :resize?,       _true,
+			     :col_alignment, :fill,
+			     :row_alignment, :fill )
+
+	label_item.new( t2_rc, _self.message(:visible_columns) )
+	
+	.items[:visible] << ti2 << tree_item.new( t2_rc,
+						  :model,                     _self,
+						  :resize?,                   _true,
+						  :col_alignment,             :fill,
+						  :row_alignment,             :fill,
+						  :aspect,                    :visible_columns,
+						  :mode,                      :many,
+						  :simple_dragging?,          _true,
+						  :double_click_notifier,     {:|move_column()|, :visible},
+						  :select_notifier,           {:|selected()|, :visible},
+						  :release_dragging_notifier, :|change_column_order()|,
+						  :message_on_no_data?,       _false
+					     )
+
+	# Set up dragging
+	ti2.register_drag_source( ti1, :|add_column()| )
+	ti1.register_drag_source( ti2, :|remove_column()| )
+	
+	# Buttons
+	min_width       << _self.get_optional_resource(:min_button_width, :integer).default(75)
+	button_rc       << rowcol.new( top_rc, 1, _unset, _unset,
+				       :col_alignment, :fill )
+	button_left_rc  << rowcol.new( button_rc, 1, _unset, _unset, :style, :button_box,
+				       :col_alignment, :left )
+	button_right_rc << rowcol.new( button_rc, 1, _unset, _unset, :style, :button_box,
+				       :col_alignment, :right )
+	
+	ri << smallworld_product.get_raster_image( :help, :ui_resources )
+	image_button_item.new( button_left_rc, ri, _self, :help|()| )
+
+	button_item.new_safe( button_right_rc, _self.message(:apply), _self, :apply|()|,
+			      :min_width, min_width )
+	button_item.new_safe( button_right_rc, _self.message(:close), _self, :quit|()|,
+			      :min_width, min_width )
+
+_endmethod
+$
+
+_pragma(classify_level=restricted, usage={redefinable})
+_method tree_item_column_manager.make_button_panel( a_container )
+	## 
+	## Build the buttons between th two tree items
+	##
+
+	button_rc << rowcol.new( a_container, _unset, 1, :pixel,
+				 :style, :button_box )
+
+	label_item.new( button_rc, "" )
+
+	ri      << smallworld_product.get_raster_image( :next_one, :ui_resources)
+	ri_grey << smallworld_product.get_raster_image( :next_one_grey, :ui_resources )
+	ib      << image_button_item.new_safe( button_rc, ri, _self, :|move_right()|, :model, _self,
+					       :balloon_help_text, _self.message(:add) )
+	ib.enabled?          << _false 
+	ib.insensitive_image << ri_grey
+	.items[:right]       << ib
+
+	ri      << smallworld_product.get_raster_image( :next_set, :ui_resources)
+	ri_grey << smallworld_product.get_raster_image( :next_set_grey, :ui_resources)
+	ib      << image_button_item.new_safe( button_rc, ri, _self, :|move_all_right()|, :model, _self,
+					       :balloon_help_text, _self.message(:add_all) )
+	ib.enabled?               << _true 
+	ib.insensitive_image      << ri_grey
+	ib.enabled_state_aspect   << :visible_columns
+	ib.enabled_state_selector << :right_all_enabled?
+	.items[:right_all]        << ib
+
+	ri      << smallworld_product.get_raster_image( :previous_one, :ui_resources)
+	ri_grey << smallworld_product.get_raster_image( :previous_one_grey, :ui_resources)
+	ib      << image_button_item.new_safe( button_rc, ri, _self, :|move_left()|, :model, _self,
+					       :balloon_help_text, _self.message(:remove) )
+	ib.enabled?          << _false 
+	ib.insensitive_image << ri_grey
+	.items[:left]        << ib
+
+	ri      << smallworld_product.get_raster_image( :previous_set, :ui_resources)
+	ri_grey << smallworld_product.get_raster_image( :previous_set_grey, :ui_resources)
+	ib      << image_button_item.new_safe( button_rc, ri, _self, :|move_all_left()|, :model, _self,
+					       :balloon_help_text, _self.message(:remove_all) )
+	ib.enabled?               << _true 
+	ib.insensitive_image      << ri_grey
+	ib.enabled_state_aspect   << :all_columns
+	ib.enabled_state_selector << :left_all_enabled?
+	.items[:left_all]         << ib
+
+	ri      << smallworld_product.get_raster_image( :up, :ui_resources)
+	ri_grey << smallworld_product.get_raster_image( :up_grey, :ui_resources)
+	ib      << image_button_item.new_safe( button_rc, ri, _self, :|move_up()|, :model, _self,
+					       :balloon_help_text, _self.message(:move_up) )
+	ib.enabled?          << _false 
+	ib.insensitive_image << ri_grey
+	.items[:up]          << ib
+
+	ri      << smallworld_product.get_raster_image( :down, :ui_resources)
+	ri_grey << smallworld_product.get_raster_image( :down_grey, :ui_resources)
+	ib      << image_button_item.new_safe( button_rc, ri, _self, :|move_down()|, :model, _self,
+					       :balloon_help_text, _self.message(:move_down) )
+	ib.enabled?          << _false 
+	ib.insensitive_image << ri_grey
+	.items[:down]        << ib
+
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.move_column( which, p_selection )
+	##
+	## Called when a column heading is dragged between tree items
+	## or an element is double_clicked
+	##
+	
+	_if which _is :visible
+	_then
+		source << .visible_columns
+		target << .all_columns
+	_else
+		source << .all_columns
+		target << .visible_columns
+	_endif
+
+	_if _not p_selection.is_kind_of?( display_tree_selection )
+	_then
+		p_selection << {p_selection}
+	_endif
+
+	_for a_tree _over p_selection.tree_manager.fast_selected_trees()
+	_loop
+		val << a_tree.key
+		
+		its_idx << _self.find_index_for( val , source )
+		_if its_idx _isnt _unset 
+		_then
+			source.remove_nth( its_idx )
+			target.add_last( val )
+		_endif
+	_endloop
+
+	_self.changed( :visible_columns, :refresh )
+	_self.changed( :all_columns, :refresh )
+
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.set_from_visibles( headings, visibilities )
+	## 
+	## Initialise teh two lists
+	##
+
+	.all_columns.empty()
+	.visible_columns.empty()
+	
+	_for i _over 1.upto( headings.size )
+	_loop
+		_if visibilities[i]
+		_then
+			.visible_columns.add( headings[i] )
+		_else
+			.all_columns.add( headings[i] )
+		_endif
+	_endloop
+
+	_self.changed( :visible_columns, :renew )
+	_self.changed( :all_columns, :renew )
+
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.apply()
+	## 
+	## Apply changes to the owning tree_item
+	##
+
+	# change column visibility and order for the visible columns
+
+	l_headings_holder   << .tree_item.headings_holder
+	column_headings     << l_headings_holder.column_headings
+	column_orderings    << rope.new_from( l_headings_holder.column_orderings )
+	column_visibilities << rope.new( column_headings.size ).fill_with(_false)
+
+	# If it is grouped, refresh will fail so we need to ungroup
+	# here and regroup after the refresh
+	group_order << l_headings_holder.group_order
+	_if group_order _isnt _unset
+	_then
+		l_headings_holder.column_grouped_by?(group_order) << _false
+	_endif
+	
+	_for idx _over 1.upto(.visible_columns.size)
+	_loop
+		
+		# Get the value
+		val << .visible_columns[idx]
+
+		# Find current position
+		current_idx << _self.find_index_for( val, column_headings )
+		_if current_idx _isnt _unset 
+		_then
+			column_visibilities[current_idx] << _true
+			column_orderings.remove( current_idx )
+			column_orderings.add_nth( current_idx, idx )
+		_endif
+	_endloop
+
+	# Update the headings and 
+	l_headings_holder.column_visibilities << column_visibilities
+	l_headings_holder.column_orderings << column_orderings
+
+	_if group_order _is _unset
+	_then
+		.tree_item.refresh()
+	_else 
+		l_headings_holder.column_grouped_by?(group_order) << _true
+	_endif 
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.change_column_order( p_tree, p_row_index, p_col_index, p_selection, p_event, p_default_mouse )
+	## 
+	## Callback when a visible item is dragged to a new location in
+	## the visible list.
+	##
+	## Move the items in P_SELECTION to the row identified by P_ROW_INDEX
+	##
+
+	# In order to cope with discontiguous selections, we need to
+	# recalculate the target position after each move and move them
+	# in reverse order
+	
+	# Find the value at the target position
+	target_val << .visible_columns[p_row_index]
+	
+	# Save all the values that are to be moved
+	values_to_move << rope.new()
+	_for a_tree _over p_selection.tree_manager.fast_selected_trees()
+	_loop
+		values_to_move.add_first( a_tree.key )
+	_endloop 
+		
+	_for val _over values_to_move.fast_elements()
+	_loop
+		old_pos << _self.find_index_for( val, .visible_columns )
+		.visible_columns.remove_nth( old_pos )
+		new_pos << _self.find_index_for( target_val, .visible_columns ) + 1
+		.visible_columns.add_nth( val, new_pos )
+	_endloop
+
+	_self.changed( :visible_columns, :renew )
+	
+_endmethod
+$
+
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.remove_column(p_source, p_tree, p_row_index, p_col_index, p_selection ) 
+	## 
+	## Move a column from the visible list to the available list
+	##
+	
+	_for a_tree _over p_selection.fast_elements()
+	_loop
+		val << a_tree.key
+
+		its_idx << _self.find_index_for( val, .visible_columns )
+		
+		_if its_idx _isnt _unset
+		_then
+			.visible_columns.remove_nth(its_idx)
+			.all_columns.add_nth(val, p_row_index.default(.all_columns.size+1))
+		_endif 	
+	_endloop
+	
+	_self.changed( :visible_columns, :renew )
+	_self.changed( :all_columns, :renew )
+
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.add_column(p_source, p_tree, p_row_index, p_col_index, p_selection ) 
+	## 
+	## Move a column from the available list to the visible list
+	##
+
+	_for a_tree _over p_selection.fast_elements()
+	_loop
+		val <<a_tree.key
+
+		its_idx << _self.find_index_for( val, .all_columns )
+			
+		_if its_idx _isnt _unset		
+		_then
+			.all_columns.remove_nth(its_idx)
+			.visible_columns.add_nth(val, p_row_index.default(.visible_columns.size+1) )
+		_endif 	
+	_endloop
+	
+	_self.changed( :visible_columns, :renew )
+	_self.changed( :all_columns, :renew )
+
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_private _method tree_item_column_manager.find_index_for( value, list )
+	## A bit ugly, this method finds the entry VALUE in list LIST
+	## where VALUE is presumed to be a text string and LIST is a
+	## rope.
+	## The ropes are generally small (<50) items, so not too
+	## slow. May optimize search for larger lists.
+
+	result << _for i _over 1.upto(list.size)
+	_loop
+		_if list[i] = value
+		_then
+			_leave _with i
+		_endif 
+	_endloop
+
+	>> result
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.note_change( who, what, _gather data )
+	## 
+	## Change notification when the display changes in the owning
+	## tree item
+	##
+
+	#DEBUG show(who, ".note_change()", _self, what, _scatter data )
+	_if who _is .tree_item _andif
+	    what _is :column_headings
+	_then
+		l_hh << .tree_item.headings_holder
+		_self.set_from_visibles( l_hh.column_headings,
+					 l_hh.column_visibilities )
+	_endif
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted )
+_method tree_item_column_manager.move_left()
+	## 
+	## Callback for :left button
+	##
+
+	_self.move_column( :visible, .items[:visible].selection )
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted )
+_method tree_item_column_manager.move_right()
+	## 
+	## Callback for :right button
+	##
+
+	_self.move_column( :all, .items[:all].selection )
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.move_all_left()
+	## 
+	## Callback for :left_all button
+	##
+
+	_self.move_all( .visible_columns, .all_columns )
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.move_all_right()
+	## 
+	## Callback for :right_all button
+	##
+
+	_self.move_all( .all_columns, .visible_columns )
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_private _method tree_item_column_manager.move_all( source, target )
+	## 
+	## Move all items from source list to target list
+	##
+		
+	_for val _over source.elements()
+	_loop
+		
+		its_idx << _self.find_index_for( val , source )
+
+		_if its_idx _isnt _unset 
+		_then
+			source.remove_nth( its_idx )
+			target.add_last( val )
+		_endif
+	_endloop
+
+	_self.changed( :visible_columns, :refresh )
+	_self.changed( :all_columns, :refresh )
+
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.move_up()
+	## 
+	## Callback for :up button
+	##
+
+	l_selection << .items[:visible].selection
+
+	_for a_tree _over l_selection.tree_manager.fast_selected_trees()
+	_loop
+		val << a_tree.key
+		idx << _self.find_index_for( val, .visible_columns )
+		.visible_columns.remove_nth( idx )
+		.visible_columns.add_nth( val, idx - 1 )
+	_endloop 
+	
+	_self.changed(:visible_columns, :refresh)
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.move_down()
+	## 
+	## Callback for :down button
+	##
+
+	l_selection << .items[:visible].selection
+
+	# Move them in reverse order
+	vals << rope.new()
+	_for a_tree _over l_selection.tree_manager.fast_selected_trees()
+	_loop
+		vals.add_first( a_tree.key )
+	_endloop
+	
+	_for val _over vals.fast_elements()
+	_loop
+		idx << _self.find_index_for( val, .visible_columns )
+		.visible_columns.remove_nth( idx )
+		.visible_columns.add_nth( val, idx + 1 )
+	_endloop 
+	
+	_self.changed(:visible_columns, :refresh)
+
+_endmethod
+$
+
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.selected( p_list, p_selection )
+	## 
+	## Callback when selection changes on either of the tree_items
+	## P_LIST indicates in which list teh selection
+	## has changed.
+	##
+	
+	anything_selected? << p_selection.size <> 0
+	start              << p_selection.start_row
+	end                << p_selection.end_row
+
+	 _if p_list _is :visible
+	 _then
+		 # set move left
+		 .items[:left].enabled? << anything_selected?
+
+		 # up is enabled if this is not the first item in the list
+		 .items[:up].enabled? << anything_selected? _andif (start > 1)
+
+		 l_size << .visible_columns.size
+		 # down is enabled if this is not the last item in the list
+		 .items[:down].enabled? << anything_selected? _andif ( end < l_size)
+		 
+	 _elif p_list _is :all
+	 _then
+		 # set move right
+		 .items[:right].enabled? << anything_selected?
+		 .items[:up].enabled? << _false
+		 .items[:down].enabled? << _false 
+	 _endif
+	 
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.left_all_enabled?
+	## 
+	## Returns whether left_all button should be enabled
+	##
+	
+	>> _not .visible_columns.empty?
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.right_all_enabled?
+	## 
+	## Returns whether right_all button should be enabled
+	##
+	
+	>> _not .all_columns.empty?
+	
+_endmethod
+$
+
+_pragma(classify_level=restricted)
+_method tree_item_column_manager.help_provider
+	## 
+	## Return the object that will provide help.
+	## This will be the model of the tree_item that we are being
+	## used to control
+	##
+
+	>> .tree_item.model
+	
+_endmethod
+$

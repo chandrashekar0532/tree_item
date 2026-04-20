@@ -1,0 +1,1230 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+# Author         : GE Smallworld (Ken Korsmit)
+# Date           : Oct/2001
+#
+## Provide a tree (subclass) that is suitable for displaying.
+## Its is a data structure, thus it does not display itself,
+## and there are renderers that are dedicated for that purposes.
+##
+## However, the display_trees has three important features
+## (apart from being an hierarchical tree structure):
+## 1) It can have a 'styled_string,' which an arbitrary vector of
+##    display-able elements and formatting information.
+## 2) It knows whether it is selected or not. This can be
+##    expressed as a boolean (the whole tree (or row) is selected
+##    or not), or in terms of columns (an iterator is provide to
+##    find out which ones).
+## 3) It knows whether it is expanded or not, i.e. whether it
+##    is visible itself, and whether its children are visible.
+#
+# To allow an element having a vector of formatted,
+# display-able elements, is implemented:
+#    .int!styled_string
+#    .int!styled_string<<
+# To allow an element being expanded, is implemented:
+#    .int!nr_expanded_subtrees
+#    .int!nr_expanded_subtrees<<
+# To allow an element being selected, is implemented:
+#    .int!selection
+#    .int!selection<<
+def_slotted_exemplar(:display_tree,
+{
+	{:int!styled_string,        _unset},
+	{:int!selection,            _false},
+	{:int!nr_expanded_subtrees, 0}
+},
+{:tree})
+$
+       
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+## Allow to display_trees to be compared based on the
+## implementation of .equals?(). This returns _true if classes
+## are the same and keys are the same (if not unset)
+define_binary_operator_case(:|=|, display_tree, display_tree, _proc(i1,i2) >> i1.equals?(i2) _endproc)
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+## allow an element having a vector of formatted, display-able elements
+display_tree.define_slot_access(:int!styled_string, :writable, :private)
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+## allow an element being selected (or even: its cells)
+display_tree.define_slot_access(:int!selection, :readable, :public)
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+## Parameters    : P_NEW: The total number of children (and
+##                    their children) and is shown below self.
+## Returns       : P_NEW
+## Function      : Set the new number of subtrees below self
+##                 that is expanded. If it changes, we should cause a :height
+##                 change notification to update dependents (e.g. a window)
+display_tree.define_slot_access(:int!nr_expanded_subtrees, :writable)
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+## Place holder for checking whether we intend to set or to get a value.
+display_tree.define_shared_constant(:int!unique_unset_marker, "getting", :public)
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.new_from(p_datum)
+	## Parameters    : P_DATUM: An object that needs to be stored
+	##                    in a display_tree structure.
+	## Returns       : A display_tree
+	## Function      : Checks if P_DATUM knows how to turn it self
+	##                 into a display_tree (using
+	##                 .as_display_tree()), otherwise it creates a
+	##                 new one having P_DATUM as a key.
+	>>_if p_datum.responds_to?(:|as_display_tree()|)
+	  _then >> p_datum.as_display_tree()
+	  _else >> _self.new(p_datum)
+	  _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method display_tree.init_shallow_copy(p_copy_value?)
+	# tree cannot be expanded.
+	.int!nr_expanded_subtrees << 0
+	>> _super.init_shallow_copy(p_copy_value?)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method display_tree.init_deep_copy(p_copy_value?)
+	# the proper code run
+	_super.init_deep_copy(p_copy_value?)
+	# check if self used to be expanded, if so, expand now as well
+	_if ((.int!nr_expanded_subtrees ^<< 0) > 0)
+	_then
+		_self.expanded? << _true 
+	_endif
+	>> _self
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree.key << p_new
+	## Parameters    : P_NEW: New datum that we want to have as a key
+	## Returns       : P_NEW
+	## Function      : Set a new key. For the moment, new keys can
+	##                 only be set if the tree is not a child,
+	##                 i.e. since it has to be the only child with
+	##                 this key of all its siblings.
+	## Note          : This behaviour may be refined in the future.
+	_if _self.is_root?
+	_then
+		.key << p_new
+	_else
+		# ToDo: Do something more clever than this
+		condition.raise(:error, :string, "Do not change the key of a tree that is not a root")
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.as_display_tree()
+	## Parameters    : -
+	## Returns       : _self
+	## Function      : It is requested to have self as a display
+	##                 tree, which is easy since it is one already.
+	>> _self
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.new(p_key, _optional p_value, p_parent, p_children, p_message)
+	## Parameters    : P_KEY: A datum that can be used to identify
+	##                    and retrieve _self. Display trees can be
+	##                    compared on equality basis, for which
+	##                    P_KEY will be used. Furthermore it has to
+	##                    be unique among siblings.
+	##                 [P_VALUE]: Optional arbitrary value, up to
+	##                    the api-user to decide. If it is indexed,
+	##                    the .value(<index>) method may be used for convenience.
+	##                 [P_PARENT]: Parental display_tree to which
+	##                    the new display tree will be attached as a child.
+	##                 [P_CHILDREN]: A collection of display_trees
+	##                    (or other objects) to be attached to
+	##                    children to the new display tree. Each
+	##                    child will be turned into a display_tree with P_MESSAGE;
+	##                 [P_MESSAGE:] If supplied, then this message
+        ##                    will be sent to each element of P_CHILDREN before it is
+        ##                    used, thus it should return a display_tree.
+	##                    (defaults to .as_display_tree())
+	## Returns       : A new initialised instance of display_tree.
+	## Function      : Create a new display tree, that can be
+	##                 identified in the hierarchical structure
+	##                 with P_KEY on equality basis. Note that if several trees
+	##                 elsewhere in the hierachy exist with P_KEY, the first one
+	##                 encountered with .fast_elements() will be returned.
+	##                 P_VALUE is an optional object, which may also be used to
+	##                 return (indexed) information from when the styled_string of
+	##                 self is resolved and contains :value placeholders.
+	##                 P_PARENT may be another diplay_tree to which
+	##                 to attach the new display_tree. It will
+	##                 become the last child, unless P_PARENT has its children sorted.
+	##                 P_CHILDREN and P_MESSAGE can be used when the
+	##                 children for the new display tree are already known now (or
+	##                 we know how to generate them with P_MESSAGE).
+	>> _clone.init(p_key, p_value, p_parent, p_children, p_message)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_private _method display_tree.init(p_key, p_value, p_parent, _optional p_children, p_message)
+	## Parameters    : See .new() method
+	## Returns       : _self
+	## Function      : Initialise self's slots
+	_super.init(p_key, p_value, p_parent)
+	# make sure we reset this, since it might have been set for the exemplar (by accident)
+	.int!styled_string << _unset
+	# just in case
+	.int!selection << _false
+	# set children
+	_if (p_children _isnt _unset) _andif _not p_children.empty?
+	_then
+		_self.set_children(p_children, p_message)
+		_self.children? << _true 
+	_endif 
+	>> _self 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.styled_string
+	## Parameters    : -
+	## Returns       : A styled string
+	## Function      : Check if a styled string has been set,
+	##                 otherwise generate a default one for self's key and values.
+	_local l_styled_string << _self.int!styled_string
+	_if (l_styled_string _isnt _unset)
+	_then
+		_return l_styled_string
+	_endif
+	_self.styled_string << _self.default_styled_string
+	>> _self.int!styled_string
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.styled_string << p_new
+	## Parameters    : P_NEW: Either a styled string, or a
+	##                    simple_vector that will turned into a styled string.
+	##                    For how to create a styled string, or
+	##                    what elements can be used in the
+	##                    simple_vector, see styled_string.new() 
+	## Returns       : P_NEW
+	## Function      : Set a new styled string to be used for
+	##                 displaying _self.
+	_self.int!styled_string << styled_string.new_from(p_new)
+	>> p_new
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.selected?
+	## Parameters    : -
+	## Returns       : _true if any part of _self is selected,
+	##                 _false otherwise
+	## Function      : Determine whether _self is selected
+	>> (_self.int!selection _isnt _false)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_iter _method display_tree.selected_columns()
+	## Parameters    : -
+	## Returns       : Iterations of integers, denoting column
+	##                 numbers that are selected.
+	## Function      : 
+	## Methodology   : If the whole row is selected, the styled
+	##                 string is used to count the total number of columns, and
+	##                 they will be returned all.
+	_if ((l_selection << _self.int!selection) _is _false)
+	_then
+		_return
+	_endif
+	_local l_max << _self.number_of_columns
+	_if (l_selection _is _true)
+	_then
+		_for i_column_nr _over range(1, l_max)
+		_loop
+			_loopbody (i_column_nr)
+		_endloop
+	_elif integer.is_class_of?(l_selection)
+	_then
+		_if (l_selection <= l_max)
+		_then
+			_loopbody (l_selection)
+		_endif
+	_elif simple_vector.is_class_of?(l_selection)
+	_then 
+		_for i_column_nr _over l_selection.fast_elements()
+		_loop
+			_if (i_column_nr <= l_max)
+			_then
+				_loopbody (i_column_nr)
+			_endif
+		_endloop
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree.first_selected_column
+	## Parameters    : -
+	## Returns       : Column number that is stored as the first to
+	##                 be selected
+	## Function      : The first selected column is the one with
+	##                 the lowest id.
+	_for i_selected_column _over _self.selected_columns()
+	_loop
+		_return i_selected_column
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree.last_selected_column
+	## Parameters    : 
+	## Returns       : Column number that is stored as the last to
+	##                 be selected
+	## Function      : The last selected column is the one with
+	##                 the highest id.
+	>> _if ((l_selection << _self.int!selection) _is _unset)
+	   _then 
+		   # do nothing
+	   _elif (l_selection _is _true)
+	   _then
+		   >> _self.number_of_columns
+	   _elif integer.is_class_of?(l_selection)
+	   _then 
+		   >> l_selection
+	   _elif simple_vector.is_class_of?(l_selection) _andif (_not l_selection.empty?)
+	   _then
+		   >> l_selection.last
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.number_of_columns
+	## Parameters    : -
+	## Returns       : Number of columns that can be found in
+	##                 self's styled string.
+	## Function      : 
+	>> _self.styled_string.number_of_tabs + 1
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.is_column_selected?(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: Integer denoting a column
+	## Returns       : _true if P_COLUMN_INDEX is selected,
+	##                 _false if it is not
+	## Function      : 
+	>> _self.is_column_selected_in?(p_column_index, _self.int!selection)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={internal})
+_method display_tree.is_column_selected_in?(p_column_index, p_selection)
+	## Parameters    : P_COLUMN_INDEX: Integer denoting a column
+	##                 P_SELECTION: A selection as it might be set
+	##                    to a display_tree: A boolean to denote the
+	##                    whole row is selected/deselected; 
+	##                    An integer to denote a single column; or
+	##                    a simple_vector of integers to denote a
+	##                    set of selected columns. 
+	## Returns       : _true if P_COLUMN_INDEX is 'included' in P_SELECTION,
+	##                 _false otherwise
+	## Function      : 
+	>> _if (p_selection _is _unset) _orif (p_selection _is _false)
+	   _then >> _false 
+	   _elif (p_selection _is _true)
+	   _then >> _true 
+	   _elif integer.is_class_of?(p_selection)
+	   _then >> (p_selection = p_column_index)
+	   _elif simple_vector.is_class_of?(p_selection)
+	   _then >> p_selection.includes?(p_column_index)
+	   _else >> _false 
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.selected? << p_selected?
+	## Parameters    : P_SELECTED?: _true if all of _self is selected,
+	##                    _false if none of _self is.
+	## Returns       : P_SELECTED?
+	## Function      : Set self's selection
+	>> _self.selection << p_selected?
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.selection
+	## Parameters    : -
+	## Returns       : Self's selection: A boolean denotes the
+	##                 whole row is selected/deselected; 
+	##                 An integer to denote a single column; or
+	##                 a simple_vector of integers to denote a
+	##                 set of selected columns.
+	## Function      : 
+	>> _self.int!selection
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.selection << p_selection
+	## Parameters    : P_SELECTION: A selection as it might be set
+	##                    to a display_tree: A boolean to denote the
+	##                    whole row is selected/deselected; 
+	##                    An integer to denote a single column; or
+	##                    a simple_vector of integers to denote a
+	##                    set of selected columns. 
+	## Returns       : P_SELECTION
+	## Function      : Validates and sets P_SELECTION. If nothing
+	##                 changes, it will not be set.
+	## Methodology   : If we have a parent, it will be asked to set
+	##                 _self new selection (this will take care of synchronisation
+	##                 with a possible 'display_tree_selection'). If there is not a
+	##                 parent, the validated P_SELECTION will be set directly.
+	# check if selection isnt empty
+	_if (p_selection _is _unset) _orif
+	    ((p_selection _isnt _true) _andif
+	     ((p_selection _is _false) _orif (p_selection _is 0) _orif 
+	      ((_not integer.is_class_of?(p_selection)) _andif p_selection.empty?)))
+	_then
+		p_selection << _false
+	_endif
+	# do not do unessecary work
+	_if _self.int!selection = p_selection _then _return p_selection _endif
+	# update parents
+	_if ((l_parent << _self.parent) _isnt _unset)
+	_then
+		# let the parent approve of and set the selection
+		l_parent.int!update_parent(0, _self, :selection, p_selection)
+	_else
+		# there is no parent to rely on, so we do it ourselfs
+		_self.int!selection << p_selection
+	_endif
+	>> p_selection
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method display_tree.int!selection << p_selection
+	## Parameters    : P_SELECTION: A *validated* selection as it might be set
+	##                    to a display_tree: A boolean to denote the
+	##                    whole row is selected/deselected; 
+	##                    An integer to denote a single column; or
+	##                    a simple_vector of integers to denote a
+	##                    set of selected columns. 
+	## Returns       : P_SELECTION
+	## Function      : If P_SELECTION is not _false, make sure we
+	##                 are visible as well. 
+	## Methodology   : Make sure the 'invariant condition' that any
+	##                 selected display_tree is applied.
+	_if ((.int!selection << p_selection) _isnt _false)
+	_then
+		# in order to be selected, we have to be visible as well
+		_self.visible? << _true 
+	_endif
+	>> p_selection
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={internal})
+_method display_tree.int!selection_add_col(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: Integer denoting a column
+	## Returns       : Simple vector of sorted column numbers, to
+	##                 which P_COLUMN_INDEX has been added;
+	##                 This may also be an integer if only
+	##                 P_COLUMN_INDEX is selected.
+	## Function      : Create an extended selection, but does not
+	##                 set it.
+	
+	_local l_new_selection
+
+	##
+	## See tree_agent.handle_click() - corresponds to selecting
+	## column 0 which contains the row # , assumed as shortcut to selecting
+	## all columns in this row.
+	##
+	_if p_column_index _is _true
+	_then
+		l_new_selection << set.new()
+		_for i_sel_col _over 1.upto(_self.number_of_columns)
+		_loop
+			l_new_selection.add(i_sel_col)
+		_endloop
+	_else
+		l_new_selection << set.new_with(p_column_index)
+		_for i_sel_col _over _self.selected_columns()
+		_loop
+			l_new_selection.add(i_sel_col)
+		_endloop
+	_endif
+	
+	>> _if l_new_selection.size > 1
+	   _then >> l_new_selection.as_sorted_collection().as_simple_vector()
+	   _else >> l_new_selection.an_element()
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={internal})
+_method display_tree.int!selection_remove_col(p_column_index)
+	## Parameters    : P_COLUMN_INDEX: Integer denoting a column
+	## Returns       : Simple vector of sorted column numbers, from
+	##                 which P_COLUMN_INDEX has been removed;
+	##                 This may also be an integer if only
+	##                 P_COLUMN_INDEX is selected.
+	## Function      : Create an shrunken selection, but does not
+	##                 set it.
+	## Note          : At this moment, _unset is returned when
+	##                 the new selection is empty. This will be changed to _false.
+	_local l_new_selection << rope.new()
+	_for i_sel_col _over _self.selected_columns()
+	_loop
+		_if (i_sel_col <> p_column_index)
+		_then
+			l_new_selection.add(i_sel_col)
+		_endif
+	_endloop
+	>> _if l_new_selection.size > 1
+	   _then >> l_new_selection.as_simple_vector()
+	   _else >> l_new_selection.an_element()
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.expanded?
+	## Parameters    : -
+	## Returns       : _true if self's children are expanded,
+	##                 _false if they are collapsed.
+	## Function      : Being expanded means that, if this
+	##                 display_tree is visible, its children are visible as well.
+	##                 That implies a tree can be expanded while
+	##                 its parent is not.
+	>> (_self.int!nr_expanded_subtrees > 0)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.expanded? << p_expanded?
+	## Parameters    : P_EXPANDED?: _true if self's children should be expanded,
+	##                    _false if they will become collapsed.
+	## Returns       : P_EXPANDED?
+	## Function      : Set self's internal state such that, if this
+	##                 display tree is visible, its children are visible as well.
+	_if _self.expanded? _is p_expanded? _then _return p_expanded? _endif
+	_local l_extra_children << 0
+	_if p_expanded?
+	_then
+		# calculate the number of items that will be extra expanded now
+		_for i_child _over _self.fast_children()
+		_loop
+			l_extra_children +<< 1 + i_child.int!nr_expanded_subtrees
+		_endloop
+		_self.int!nr_expanded_subtrees << l_extra_children
+	_else
+		# all lower level children become deselected
+		_for i_child _over _self.fast_children()
+		_loop
+			_for i_subtree _over i_child.fast_current_trees()
+			_loop
+				i_subtree.selected? << _false
+				# collapsed children are never selected
+				_if _not i_subtree.expanded? _then _continue _with _false _endif
+			_endloop
+		_endloop
+		l_extra_children << - _self.int!nr_expanded_subtrees
+		_self.int!nr_expanded_subtrees << 0
+	_endif
+	# update
+	_if _not _self.is_root? _then _self.parent.int!update_parent(l_extra_children, _self, :expansion) _endif 
+	>> p_expanded?
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.visible?
+	## Parameters    : -
+	## Returns       : _true if this tree is visible, i.e. all its
+	##                 parents are visible and expanded (or it is a root),
+	##                 _false otherwise
+	## Function      : 
+	_for i_parent _over _self.branch_to_root()
+	_loop
+		_if (i_parent _is _self)
+		_then
+			# skip
+		_elif _not i_parent.expanded? 
+		_then
+			_return _false 
+		_endif
+	_endloop
+	>> _true 
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.visible? << p_new?
+	## Parameters    : P_NEW?: If _true, ensure that this display_tree is
+	##                    visible, i.e. all its parents (up to the
+	##                    root) are visible.
+	##                    If _false, self's parent should collapse
+	##                    its children.
+	## Returns       : P_NEW?
+	## Function      : 
+	_for i_parent _over _self.branch_to_root()
+	_loop
+		_if (i_parent _is _self)
+		_then
+			# skip
+		_elif _not i_parent.expanded? 
+		_then
+			i_parent.expanded? << _true 
+		_endif
+	_endloop
+	>> p_new?
+_endmethod
+$
+
+_pragma(classify_level=basic)
+_iter _method display_tree.fast_visible_trees()
+	## Parameters    : [Iterator return value]: If _false is passed a
+	##                 result of the loop calling this iterator, 
+	##                 it does not process the children of the _loopbody variable
+	##                 just passed.
+	## Returns       : Always yields self, when self is expanded
+	##                 also its children, and repeats this for each
+	##                 expanded child
+	##                 If you would add all these iterations to a
+	##                 list, it would nicely display the tree structure.
+	## Function      : Return iterations of all visible children including self
+	##                 in a depth_first manner. Visible means that it's parent is
+	##                 expanded, or that it is the tree this method is invoked on.
+	# We can optimise for width or for depth, since
+	# fast_depth_first has some overhead when looping over many children;
+	# this makes sense since often most children are collapsed,
+	# i.e. not visible
+	# However... before checking the number of children, we should
+	# check first if we are expanded. May be we have lazy children!
+	_if _not _self.expanded?
+	_then
+		_loopbody (_self)
+	_elif (_self.number_of_children > 9)
+	_then
+		# optimise for width; first, iterate self
+		_if (_loopbody (_self) _is _false) _then _return _endif 
+		_for i_child _over _self.fast_children()
+		_loop
+			_for i_vis_tree _over i_child.fast_visible_trees()
+			_loop
+				>> _loopbody (i_vis_tree)
+			_endloop
+		_endloop
+	_else
+		# optimise for depth: break down first
+		_for i_tree _over _self.fast_depth_first()
+		_loop
+			# alway iterate the child, since self is expanded
+			l_result << _loopbody (i_tree)
+			# only continue with the children of i_subtree when it is expanded
+			>> (l_result _isnt _false) _andif i_tree.expanded?
+		_endloop
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_iter _method display_tree.fast_selected_trees()
+	## Parameters    : -
+	## Returns       : Iterations in a depth first way of trees
+	##                 that are selected.
+	## Function      : 
+	## Methodology   : Since only visible trees can be selected, we
+	##                 only need to process those.
+	_for i_tree _over _self.fast_visible_trees(1)
+	_loop
+		>> _if i_tree.selected?
+		   _then >> _loopbody (i_tree)
+		   _endif
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree.value
+	## Parameters    : -
+	## Returns       : Object that is stored in self's value slot.
+	## Function      : Check if .value is a handler (created with
+	##                 .set_value_method()) and if so, invoke it; otherwise the
+	##                 stored value is plainly returned.
+	_if handler.is_class_of?(l_value << .value)
+	_then
+		_return l_value.invoke(_self.int!unique_unset_marker, _unset, _self)
+	_endif
+	>> l_value
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree.value(p_index)
+	## Parameters    : P_INDEX: An index that will be known to the
+	##                    collection stored as self's value.
+	## Returns       : Value stored under P_INDEX in object that is stored in self's value slot.
+	## Function      : If P_INDEX is _unset, .value is returned; otherwise
+	##                 check if .value is a handler (created with
+	##                 .set_value_method()) and if so, invoke it; otherwise the
+	##                 stored value[P_INDEX] is returned.
+
+	>> _if (p_index _is _unset)
+	   _then
+		   >> _self.value
+	   _elif handler.is_class_of?(l_value << .value)
+	   _then
+		   >> l_value.invoke(_self.int!unique_unset_marker, p_index, _self)
+	   _elif l_value _isnt _unset
+	   _then
+		   >> l_value[p_index]
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree.value << p_new_value
+	## Parameters    : P_NEW_VALUE: New value we want to store on self.
+	## Returns       : P_NEW_VALUE
+	## Function      : Set P_NEW_VALUE in self's value slot, unless
+	##                 a handler has been specified with .set_value_method(), in
+	##                 which case the 'setter' will called with P_NEW_VALUE.
+	_if handler.is_class_of?(l_value << .value)
+	_then
+		_return l_value.invoke(p_new_value, _unset, _self)
+	_endif
+	>> .value << p_new_value
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree.value(p_index) << p_new_value
+	## Parameters    : P_NEW_VALUE: New value we want to store on self.
+	##                 P_INDEX: An index that will be known to the
+	##                    collection stored as self's value, and under
+	##                    which P_NEW_VALUE will be stored in that collection.
+	## Returns       : P_NEW_VALUE
+	## Function      : Store P_NEW_VALUE under P_INDEX in the
+	##                 collection that is in 's value slot, unless
+	##                 a handler has been specified with .set_value_method(), in
+	##                 which case the 'setter' will called with
+	##                 P_NEW_VALUE and P_INDEX.
+	_if (p_index _is _unset)
+	_then
+		_return _self.value << p_new_value
+	_elif handler.is_class_of?(l_value << .value)
+	_then
+		_return l_value.invoke(p_new_value, p_index, _self)
+	_endif
+	>> l_value[p_index] << p_new_value
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree.set_value_method(p_value_holder, p_get_method, _optional p_set_method)
+	## Parameters    : P_VALUE_HOLDER: The object to which
+	##                    l_get_method and l_set_method will be send.
+	##                 P_GET_METHOD: The message to send to
+	##                    P_VALUE_HOLDER to get a value;
+	##                    an index (possibly unset) and _self will be
+	##                    passed as arguments;
+	##                    An index will be passed e.g. when _self's
+	##                    style_string uses multiple values.
+	##                    This method may return 1) any value.
+	##                    As a second return value 2), it may return
+	##                    :image, to denote that (1) refers to an
+	##                    image; of a text_style name, which will
+	##                    be used when drawing (1) 
+	##                 [P_SET_METHOD]: The message to send to
+	##                    P_VALUE_HOLDER to set a new value;
+	##                    the new value, an index (possibly unset),
+	##                    and _self will be passed as arguments
+	## Returns       : The new handler that has been created and
+	##                 that will work as a setter and getter at the same time.
+	## Function      : Create a handler that will call P_GET_METHOD
+	##                 when a value needs to be retrieved, and
+	##                 P_SET_METHOD when a new value needs to be set.
+	##                 Both P_SET_METHOD and P_GET_METHOD will be
+	##                 send to P_VALUE_HOLDER, when invoked.
+	.value << handler.new(_self, :|int!set_value_elsewhere()|, p_value_holder, p_get_method, p_set_method)
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item})
+_method display_tree.int!set_value_elsewhere(p_value_holder, p_get_method, p_set_method, _optional p_new_value, p_index)
+	## Parameters    : P_VALUE_HOLDER, P_GET_METHOD, P_SET_METHOD:
+	##                    See .set_value_method()
+	##                 P_NEW_VALUE: If specified, this is the new
+	##                    value we want to set with P_SET_METHOD;
+	##                    If we are getting a value, then this is
+	##                    _self.int!unique_unset_marker.
+	##                 P_INDEX: An index that will be useful to the
+	##                    getter and setter to get/set the appropriate value, and under
+	##                    which P_NEW_VALUE will be stored in that collection.
+	## Returns       : The result of sending P_SET_METHOD or P_GET_METHOD to P_VALUE_HOLDER.
+	## Function      : If P_NEW_VALUE is _unset, send P_GET_METHOD
+	##                 to P_VALUE_HOLDER and pass P_INDEX and _self.
+	##                 If P_NEW_VALUE isnt _unset, send P_SET_METHOD
+	##                 to P_VALUE_HOLDER and pass P_NEW_VALUE, P_INDEX and _self.
+	>> _if (p_new_value _is _self.int!unique_unset_marker)
+	   _then
+		   >> p_get_method.send_to(p_value_holder, p_index, _self)
+	   _elif (p_set_method _isnt _unset)
+	   _then
+		   >> p_set_method.send_to(p_value_holder, p_new_value, p_index, _self)
+	   # _else: we are try to set a value, but we have not got a setter
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={subclassable})
+_method display_tree.int!update_parent(p_extra_children, p_child, p_what, _optional p_arg)
+	## Parameters    : P_EXTRA_CHILDREN: Total number of children
+	##                    that is involved with P_CHILD's change
+	##                 P_CHILD: New tree that is the cause of change
+	##                 P_WHAT: The thing that changed, either one of
+	##                    :add, :remove, :selection, :expansion at
+	##                    this level.
+	##                 [P_ARG]: Optional extra argument; used in
+	##                    conjunction with :selection, denoting P_CHILD new selection.
+	## Returns       : -
+	## Function      : Pass important update information regarding
+	##                 expansion and selection state up to the root:
+	##                 Updates .int!nr_expanded_subtrees to keep
+	##                 a correct expansion state.
+	## Methodology   : Subclasses are restricted as well and must
+	##                 call their super implementation.
+	# update parents
+	_if _self.expanded?
+	_then
+		_self.int!nr_expanded_subtrees +<< p_extra_children
+	# we know that this tree is not expanded yet, but may the new
+	# child is selected (and contains a selected sub child down the
+	# line); in which case we have to expand now: any tree that is
+	# selected should also be visible and thus its parent need to
+	# be expanded
+	_elif _for i_tree _over p_child.fast_selected_trees()
+	      _loop _leave _with _true 
+	      _finally >> _false 
+	      _endloop
+	_then
+		p_extra_children << 0
+		# we have to expand now; calculate the number of items
+		_for i_child _over _self.fast_children()
+		_loop
+			p_extra_children +<< 1 + i_child.int!nr_expanded_subtrees
+		_endloop
+		_self.int!nr_expanded_subtrees << p_extra_children
+	_else
+		p_extra_children << 0
+	_endif
+	_if ((l_parent << _self.parent) _isnt _unset)
+	_then
+		l_parent.int!update_parent(p_extra_children, p_child, p_what, p_arg)
+	_elif (p_what _is :selection)
+	_then 
+		p_child.int!selection << p_arg
+	_endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_method display_tree.default_styled_string
+	## Parameters    : -
+	## Returns       : A styled_string or a collection that is
+	##                 suitable to be turned into one.
+	## Function      : Create a styled_string...
+	##                 If .key isnt unset, it will be the item listed.
+	##                 After that the default styled string for the
+	##                 value will follow.
+	_if ((l_key << .key) _is _unset)
+	_then
+		_return _self.default_value_styled_string
+	_elif l_key.responds_to?(:|as_styled_string()|)
+	_then
+		_return l_key.as_styled_string()
+	_endif
+	_local l_styled_string << _self.default_value_styled_string
+	>> _if l_styled_string.empty?
+	   _then >> {l_key.write_string}
+	   _else >> simple_vector.concatenation({l_key.write_string, :colon, :blue}, l_styled_string)
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_method display_tree.default_value_styled_string
+	## Parameters    : -
+	## Returns       : A styled_string or a collection that is
+	##                 suitable to be turned into one.
+	## Function      : Create a styled_string...
+	##                 If the value is _unset, it will be empty.
+	##                 If it is a rope or a simple_vector, 
+	##                 :tab-ed references (using :value, <key> will be made.
+	##                 Otherwise, a simple reference :value, _unset
+	##                 will be made.
+	_local l_styled_string << {}
+	_if ((l_value << _self.value) _is _unset) 
+	_then
+		# too bad, we will have an empty one
+	_elif rope.is_class_of?(l_value) _orif
+	      simple_vector.is_class_of?(l_value)
+	_then
+		l_styled_string << rope.new_for(l_value.size)
+		_local l_first? << _true 
+		_for i_key, i_value _over l_value.fast_keys_and_elements()
+		_loop
+			_if l_first? _then l_first? << _false _else l_styled_string.add(:tab) _endif
+			l_styled_string.add(:value)
+			l_styled_string.add(i_key)
+		_endloop
+	_else
+		l_styled_string << {:value, _unset}
+	_endif 
+	>> l_styled_string
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.show_on(p_stream)
+	## Parameters    : P_STREAM: Stream on which we want to show _self
+	## Returns       : 
+	## Function      : Display _self on P_STREAM, using only safe methods
+	p_stream.write(_self.class_name, "[")
+	p_stream.show(.key)
+	p_stream.write("]")
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal, subclassable})
+_method display_tree.int!add(p_new_child)
+	## Parameters    : P_NEW_CHILD
+	## Returns       : 
+	## Function      : Sets parent of P_NEW_CHILD to _self;
+	##                 may be subclassed but should call original
+	## Methodology   :
+	# first call super, since this action will update the parent etc.
+	_super.int!add(p_new_child)
+	_self.int!update_parent(1 + p_new_child.int!nr_expanded_subtrees, p_new_child, :add)
+	>> p_new_child
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal, subclassable})
+_method display_tree.int!remove(p_old_child)
+	## Parameters    : P_OLD_CHILD
+	## Returns       : 
+	## Function      : Sets parent of P_OLD_CHILD to _unset;
+	##                 may be subclassed but should call original
+	## Methodology   :
+	_self.int!update_parent(-(1 + p_old_child.int!nr_expanded_subtrees), p_old_child, :remove)
+	# lastly call super, since this action will update the parent etc.
+	_super.int!remove(p_old_child)
+	>> p_old_child
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item}, usage={subclassable})
+_iter _method display_tree.image_states()
+	## Iterates over candidate images for this
+	## tree. Which icon in this trees icon_scheme is
+	## returned depends on the fact whether this tree has children
+	## or not and if, whether it's collapsed or expanded.
+	##
+	## Currently allowed states are (in this order returned):
+	##  * Leaf:        image to use when tree is a leaf
+	##  * Expanded:    image to use when expanded
+	##  * Collapsed:   image to use when collapsed
+	##  * Selected:    image to use when the tree is selected
+	##  * Default:     the default image to resort to if no
+	##                 explicit image is defined for the state
+	##                 the tree is in.
+	## However, it is possible that subclasses of styled_string or 
+	## styled_tree define new states.
+	_if _self.is_leaf?
+	_then
+		_loopbody (:leaf)
+		_loopbody (:collapsed)
+	_elif _self.expanded?
+	_then
+		_loopbody (:expanded)
+	_else
+		_loopbody (:collapsed)
+	_endif
+	_if _self.selected?
+	_then
+		_loopbody (:selected)
+	_endif
+	_loopbody (:default)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree.number_of_visible_trees
+	## Parameters    : -
+	## Returns       : The number of trees that are visible under
+	##                 _self, including _self. This is the same as the number of
+	##                 iterations that will returned with .fast_visible_trees,
+	##                 however, this is a really fast method.
+	## Function      : 
+	>> .int!nr_expanded_subtrees + 1
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree.copy_expansion_and_selection( p_another, _optional p_also_when_no_children? )
+	##
+	## Parameters    : P_ANOTHER: Another display tree we copy the
+	##                    expansion and selection states from.
+	##                 [P_ALSO_WHEN_NO_CHILDREN?]: By default, if
+	##                    P_ANOTHER has no children (or lazy ones),
+	##                    then matching children will be collapsed.
+	##                    If this parameter is set to _true, then
+	##                    are more strict interpretation of being 
+	##                    'expanded' is applied. (However, in most 
+	##                    cases with display trees that is unwanted).
+	## Returns       : -
+	## Function      : Copy the expansion and selection
+	##                 states from P_ANOTHER; Also P_ANOTHER is
+	##                 expanded, and _self and P_ANOTHER have
+	##                 children with the same keys, then the same
+	##                 process is repeated for children of _self.
+	## Methodology   : Use recursion
+
+	_self.selection << p_another.int!selection
+	
+	_if (p_also_when_no_children? _is _true) _orif
+	    ((_not p_another.is_lazy?) _andif p_another.children?)
+	_then
+		# We can only be expanded if the children have been retrieved,
+		# but we can check whether we *are* expanded without retrieving the children now
+		_local l_expanded? << p_another.expanded?
+		
+		# Copy state of children
+		_if l_expanded?
+		_then
+			_if _self.backstop_key_equals_proc?
+			_then
+				anothers_keys << equality_hash_table.new(1000)
+				_for i_another _over p_another.fast_children()
+				_loop
+					l_another_key << i_another.key
+					_if l_another_key _isnt _unset _andif
+					    ( _not l_another_key.responds_to?(:is_valid?) _orif
+					      l_another_key.is_valid? )
+					_then
+						anothers_keys[l_another_key] << i_another
+					_endif
+				_endloop
+
+				_for i_child _over _self.fast_children()
+				_loop
+					l_another << anothers_keys[i_child.key]
+					_if l_another _isnt _unset
+					_then
+						i_child.copy_expansion_and_selection(l_another, p_also_when_no_children?)
+					_endif
+				_endloop
+			_else
+				#
+				# Avoid using another_child_with_key() as this is potentially slow.
+				# We use a rope containing pairs of values to look up our mapping,
+				# as this faster than using a hash_table simply as a holder. We also
+				# assume we won't find two keys the same, so when we find a
+				# match we remove the element. Note that often the two lists
+				# will be roughly the same, so keys will be in order, and in
+				# that case we'll be removing from the front, which is optimal
+				# to reduce unnecessary searching.
+				#
+				anothers_keys << rope.new_for(1000)
+				_for i_another _over p_another.fast_children()
+				_loop
+					# Only consider expanded or selected children of p_another
+					_if i_another.expanded? _orif i_another.selection _isnt _false
+					_then
+						l_another_key << i_another.key
+						_if l_another_key _isnt _unset _andif
+						    ( _not l_another_key.responds_to?(:is_valid?) _orif
+						      l_another_key.is_valid? )
+						_then
+							anothers_keys.add( {l_another_key, i_another} )
+						_endif
+					_endif
+				_endloop
+				
+				l_equals_proc << _self.key_equals_proc
+				_for i_child _over _self.fast_children()
+				_loop
+					l_key << i_child.key
+					_for n, i_args _over anothers_keys.fast_keys_and_elements()
+					_loop
+						(l_another_key, l_another) << (_scatter i_args)
+						_if l_equals_proc( l_key, l_another_key )
+						_then
+							i_child.copy_expansion_and_selection(l_another, p_also_when_no_children?)
+							anothers_keys.remove_nth(n)
+							_leave
+						_endif
+					_endloop
+				_endloop
+			_endif
+		_endif
+		
+		# Do this at last; less work with updating parent's expansion state
+		_self.expanded? << l_expanded?
+		
+	_elif (_not _self.is_lazy?)
+	_then 
+		_for i_tree _over _self.fast_selected_trees()
+		_loop
+			_if (i_tree _isnt _self)
+			_then
+				i_tree.selected? << _false 
+			_endif
+		_endloop
+	_endif
+	
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item})
+_method display_tree.expand_fully()
+	## Parameters    : 
+	## Returns       : 
+	## Function      : Expand children substructure fully. 
+#	_local l_old_parent << _self.int!parent
+#	_protect
+#		# temporarily unset parent, so we won't get many updates
+#		_self.int!parent << _unset 
+#		# do it in reverse so we end with self
+#		_for i_tree _over _self.breadth_first_in_reverse()
+#		_loop
+#			i_tree.expanded? << _true 
+#		_endloop
+#	_protection
+#		_self.int!parent << l_old_parent
+#	_endprotect
+	# ToDo: Now the selection disappears! An unwanted side effect
+	# temporarily compress self, so we won't get many updates
+	_self.expanded? << _false 
+	# do it in reverse so we end with self
+	_for i_tree _over _self.breadth_first_in_reverse()
+	_loop
+		i_tree.expanded? << _true 
+	_endloop
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={subclassable})
+_method display_tree.as_charvec(_optional p_column_nr)
+	## Parameters    : [P_COLUMN_NR]: If the styled_string contains
+	##                    tabs, P_COLUMN_NR may denote which part of it is wanted as a
+	##                    char vec.
+	## Returns       : A string, containing the textual output of a
+	##                 styled string. All parse functions except :value
+	##                 (e.g. :image) and text_styles (e.g. :foreground) are ignored.
+	## Function      : 
+	>> _self.styled_string.as_charvec(p_column_nr, _self)
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={subclassable})
+_method display_tree.matches?(p_pattern, _optional p_column_nr)
+	## Parameters    : P_PATTERN: Pattern containing *,?'s that
+	##                    should be canonical (lowercase!)
+	##                 [P_COLUMN_NR]: If the styled_string contains
+	##                    tabs, P_COLUMN_NR may denote which part of it is wanted as a
+	##                    char vec.
+	## Returns       : _true if P_PATTERN matches the lowercase
+	##                 version of self.as_charvec(),
+	##                 _false otherwise.
+	## Function      : Check wether self's lowercase character representation
+	##                 matches P_PATTERN. Optionally, P_COLUMN_NR
+	##                 may specify which part of _self we want to check (this is
+	##                 useful when the columns have been rearranged...)
+	## Methodology   : See also: ro_charindex_mixin.matches?()
+	>> _self.as_charvec(p_column_nr).canonical.matches?(p_pattern)
+_endmethod
+$
+
+_pragma(classify_level=advanced, topic={tree_item})
+_method display_tree.key_equals_proc
+	## Parameters    : -
+	## Returns       : A procedure that takes two keys as arguments and returns
+	##                 wether they are equal. This procedure is used when a
+	##                 comparison between two keys needs to be made.
+	## Function      : Checks if we have a parent, if so, return
+	##                 parent's key_equals_proc; if not, return
+	##                 super's key_equals_proc
+	>> _if ((l_parent << _self.parent) _isnt _unset)
+	   _then >> l_parent.key_equals_proc
+	   _else >> _super.key_equals_proc
+	   _endif
+_endmethod
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.value_id_in_column(p_column_nr)
+	## Parameters    : P_COLUMN_NR: If the styled_string contains
+	##                    tabs, P_COLUMN_NR denotes which part of it is wanted
+	## Returns       : First value-id of self's string in current column
+	## Function      : Retrieve the first value id as specified with
+	##                 :value in the styled string, in the column
+	##                 corresponding with P_COLUMN_NR.
+	##                 (Columns being identified with :tab)
+	>> _self.styled_string.value_id_in_column(p_column_nr)
+_endmethod
+$
+
+$
+
+_pragma(classify_level=basic, topic={tree_item}, usage={external})
+_method display_tree.value_in_column(p_column_nr, _optional p_try_col_nr_as_value_id?)
+	## Parameters    : P_COLUMN_NR: If the styled_string contains
+	##                    tabs, P_COLUMN_NR denotes which part of it is wanted
+	##                 P_TRY_COL_NR_AS_VALUE_ID?: If _true (false
+	##                    by default), then - if no :value is found
+	##                    in the column identified by P_COLUMN_NR -
+	##                    P_COLUMN_NR will be used as value_id.
+	##                    This will return a value if self's values
+	##                    are keyed by integers (e.g. when self's
+	##                    value is a simple_vector).
+	## Returns       : First value-id of self's string in current column
+	## Function      : Retrieve the first value id as specified with
+	##                 :value in the styled string, in the column
+	##                 corresponding with P_COLUMN_NR.
+	##                 (Columns being identified with :tab)
+	_local l_value_id << _self.value_id_in_column(p_column_nr)
+	>> _if (l_value_id _isnt _unset)
+	   _then >> _self.value(l_value_id)
+	   _elif (p_try_col_nr_as_value_id? _is _true)
+	   _then >> _self.value(p_column_nr)
+	   _endif
+_endmethod
+$
+

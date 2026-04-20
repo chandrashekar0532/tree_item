@@ -1,0 +1,39 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+_pragma(classify_level=restricted)
+##
+## Internal charvec related functions which are specialised and
+## specific to GUI controls.
+##
+def_mixin(:gui_charvec_func_mixin)
+$
+
+_pragma(classify_level=advanced)
+_method gui_charvec_func_mixin.key_press_matches_charvec?(charvec,key_char)
+	##
+	## Attempts to match KEY_CHAR, a character from a key press, to
+	## CHARVEC, a string.
+	##
+	## Returns _true if KEY_CHAR does match CHARVEC.
+	## Returns _false otherwise.
+	##
+	## Matching is done by considering the first non-space
+	## character of the CHARVEC and seeing if it matches KEY_CHAR.
+	## The comparison is case insensitive.
+	##
+	low_char << key_char.lowercase
+	_for c _over charvec.fast_elements()
+	_loop
+		_if (c _isnt % )
+		_then
+			_return c.lowercase _is low_char
+		_endif
+	_endloop
+	>> _false
+_endmethod
+$

@@ -1,0 +1,12 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+#							       
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+#							       
+# ************************************************************ 
+_package sw
+
+_block 
+	message_handler(:tree_item_column_manager).set_uses_list( { :gen_graphics } )
+_endblock
+$
